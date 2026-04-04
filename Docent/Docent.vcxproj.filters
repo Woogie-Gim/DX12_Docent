@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Src">
+      <UniqueIdentifier>{9cf05db2-e223-49a2-b09b-e96ec17ec3ad}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Core">
+      <UniqueIdentifier>{18a312d7-fd35-4a73-816f-77b43797e8e0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Graphics">
+      <UniqueIdentifier>{09ced381-1a9c-4833-b515-6627993996fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Src\Object">
+      <UniqueIdentifier>{a355b539-8b72-4fd2-a870-0c1a9d7b1a74}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{dcc3057d-15f6-48ba-8dfe-bc5681b92fbb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{e88d9eef-59d1-451a-b3e5-528f8def48b2}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Src\Core\main.cpp">
+      <Filter>Src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Core\DocentApp.cpp">
+      <Filter>Src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Graphics\Device.cpp">
+      <Filter>Src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Object\Camera.cpp">
+      <Filter>Src\Object</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Core\Timer.cpp">
+      <Filter>Src\Core</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Src\Core\DocentApp.h">
+      <Filter>Src\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Graphics\Device.h">
+      <Filter>Src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Graphics\d3dx12.h">
+      <Filter>Src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Object\Camera.h">
+      <Filter>Src\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Core\Timer.h">
+      <Filter>Src\Core</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

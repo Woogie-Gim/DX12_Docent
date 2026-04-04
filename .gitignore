@@ -1,0 +1,23 @@
+# Visual Studio 임시 파일 및 캐시
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.aps
+*.opendb
+*.pdb
+
+# 컴파일 결과물
+*.exe
+*.dll
+*.lib
+*.obj
+*.ilk
+*.exp
+
+# 외부 라이브러리 및 임시 로그
+*.log
+*.tlog
+*.lastbuildstate
