@@ -40,6 +40,9 @@ bool DocentApp::Initialize()
 	mCamera.SetLens(0.25f * 3.1415926535f, aspectRatio, 1.0f, 1000.0f);
 	mCamera.SetPosition(0.0f, 2.0f, -5.0f); // 살짝 뒤쪽, 위쪽에 카메라 배치
 
+	// 큐브의 꼭짓점 데이터 (Geometry) 생성
+	if (!BuildCubeGeometry()) return false;
+
 	return true;
 }
 
@@ -80,6 +83,85 @@ bool DocentApp::InitMainWindow()
 	return true;
 }
 
+bool DocentApp::BuildCubeGeometry()
+{
+	// 큐브 꼭짓점 좌표 (X, Y, Z) 및 색상 (R, G, B, A) 정의
+	Vertex vertices[] =
+	{
+		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) }, // 0
+		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) }, // 1
+		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) }, // 2
+		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }, // 3
+		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }, // 4
+		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) }, // 5
+		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) }, // 6
+		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }  // 7
+	};
+
+	// 인덱스 데이터 정의: 꼭짓점들을 연결하여 삼각형을 구성하는 순서
+	std::vector<std::uint16_t> indices =
+	{
+		0, 1, 2, 0, 2, 3, // 앞면
+		4, 6, 5, 4, 7, 6, // 뒷면
+		4, 5, 1, 4, 1, 0, // 왼쪽
+		3, 2, 6, 3, 6, 7, // 오른쪽
+		1, 5, 6, 1, 6, 2, // 윗면
+		4, 0, 3, 4, 3, 7  // 아랫면
+	};
+
+	const UINT vbByteSize = (UINT)sizeof(Vertex) * 8;
+	const UINT ibByteSize = (UINT)sizeof(std::uint16_t) * (UINT)indices.size();
+
+	ID3D12Device* device = mDevice->GetDevice(); // Device 클래스에서 디바이스 빌려오기
+
+	// 임시 객체 에러를 막기 위해 구조체들을 미리 이름 있는 변수로 선언
+	CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vbByteSize);
+	CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(ibByteSize);
+	CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(1024);
+
+	// GPU 메모리에 정점 버퍼 생성 및 데이터 복사 (Upload Heap)
+	device->CreateCommittedResource(
+		&uploadHeap,
+		D3D12_HEAP_FLAG_NONE,
+		&vbDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mVertexBuffer));
+
+	void* mappedData = nullptr;
+	mVertexBuffer->Map(0, nullptr, &mappedData);
+	memcpy(mappedData, vertices, vbByteSize);
+	mVertexBuffer->Unmap(0, nullptr);
+
+	// GPU 메모리에 인덱스 버퍼 생성 및 데이터 복사 (Upload Heap)
+	device->CreateCommittedResource(
+		&uploadHeap,
+		D3D12_HEAP_FLAG_NONE,
+		&ibDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mIndexBuffer));
+
+	mappedData = nullptr;
+	mIndexBuffer->Map(0, nullptr, &mappedData);
+	memcpy(mappedData, indices.data(), ibByteSize);
+	mIndexBuffer->Unmap(0, nullptr);
+
+	// 상수 버퍼 생성 및 CPU-GPU 주소 맵핑 (MVP 행렬 전달용)
+	device->CreateCommittedResource(
+		&uploadHeap,
+		D3D12_HEAP_FLAG_NONE,
+		&cbDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mConstantBuffer));
+
+	mConstantBuffer->Map(0, nullptr, &mCBVoidPtr);
+
+	return true;
+}
+
 // 메인 루프
 int DocentApp::Run()
 {
@@ -97,19 +179,41 @@ int DocentApp::Run()
 			mTimer.Tick(); // 프레임 시간 갱신
 			Update(mTimer); // 델타 타임 전달
 
-			// 카메라의 위치를 가져옴
-			XMFLOAT3 camPos = mCamera.GetPosition();
+			// 카메라 MVP 행렬 계산
+			XMMATRIX view = mCamera.GetView();
+			XMMATRIX proj = mCamera.GetProj();
+			XMMATRIX world = XMMatrixIdentity(); // 큐브는 월드 중앙에 고정
+			XMMATRIX worldViewProj = world * view * proj;
 
-			// 위치값에 따라 색상이 부드럽게 변하도록 sin 함수 적용 (절대값으로 0~1 사이로 만듦)
-			float clearColor[] = {
-				abs(sin(camPos.x)),
-				abs(sin(camPos.y)),
-				abs(sin(camPos.z)),
-				1.0f
-			};
+			// 계산된 MVP 행렬을 상수 버퍼에 복사 (GPU로 전달)
+			ObjectConstants objConstants;
+			XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+			memcpy(mCBVoidPtr, &objConstants, sizeof(ObjectConstants));
 
-			// 화면 렌더링 호출
+			// 렌더 타겟 세팅 및 화면 지우기 (배경색 전달)
+			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f }; // 파란색 배경
 			mDevice->BeginRender(clearColor);
+
+			// 큐브 그리기 명령 호출
+			ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
+
+			// 파이프라인(PSO) 및 루트시그니처 바인딩
+			cmdList->SetGraphicsRootSignature(mDevice->GetRootSignature());
+			cmdList->SetPipelineState(mDevice->GetPSO());
+
+			// 정점 및 인덱스 버퍼 바인딩
+			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(Vertex) * 8, (UINT)sizeof(Vertex) };
+			cmdList->IASetVertexBuffers(0, 1, &vbv);
+			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(std::uint16_t) * 36, DXGI_FORMAT_R16_UINT };
+			cmdList->IASetIndexBuffer(&ibv);
+
+			// 입력 기본 위상 및 상수 버퍼 바인딩
+			cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			cmdList->SetGraphicsRootConstantBufferView(0, mConstantBuffer->GetGPUVirtualAddress());
+
+			// 최종 그리기 명령
+			cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+
 			mDevice->EndRender();
 		}
 	}

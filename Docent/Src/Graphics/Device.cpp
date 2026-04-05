@@ -1,4 +1,5 @@
 #include "Device.h"
+#include <vector>
 
 // 생성자
 Device::Device() {}
@@ -57,6 +58,83 @@ bool Device::Initialize(HWND hwnd, int width, int height)
     // 서술자 힙 생성 및 버퍼 크기 초기화
     CreateRtvAndDsvDescriptorHeaps();
     OnResize(width, height);
+
+    // 큐브를 그리기 위한 핵심 파이프라인(PSO) 생성
+    if (!CreateCubeRenderingPipeline()) return false;
+
+    return true;
+}
+
+// 셰이더 컴파일 유틸리티 함수
+ComPtr<ID3DBlob> Device::CompileShader(const std::wstring& filename, const std::string& entrypoint, const std::string& target)
+{
+    UINT compileFlags = 0;
+#if defined(DEBUG) || defined(_DEBUG)
+    compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+
+    HRESULT hr = S_OK;
+    ComPtr<ID3DBlob> byteCode = nullptr;
+    ComPtr<ID3DBlob> errors = nullptr;
+
+    std::wstring path = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Shaders\\Shaders.hlsl";
+
+    hr = D3DCompileFromFile(path.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        entrypoint.c_str(), target.c_str(), compileFlags, 0, &byteCode, &errors);
+
+    if (errors != nullptr)
+    {
+        OutputDebugStringA((char*)errors->GetBufferPointer());
+    }
+
+    return byteCode;
+}
+
+// 큐브 렌더링 파이프라인 (RootSignature, PSO) 생성 핵심 로직
+bool Device::CreateCubeRenderingPipeline()
+{
+    // 루트 시그니처 생성: 셰이더가 b0 상수 버퍼(MVP 행렬)를 사용할 것임을 등록
+    CD3DX12_ROOT_PARAMETER slotRootParameter[1];
+    slotRootParameter[0].InitAsConstantBufferView(0); // register(b0)
+
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+    ComPtr<ID3DBlob> serializedRootSig = nullptr;
+    ComPtr<ID3DBlob> errorBlob = nullptr;
+    D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &serializedRootSig, &errorBlob);
+    md3dDevice->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&mRootSignature));
+
+    // 셰이더 컴파일
+    ComPtr<ID3DBlob> mvsByteCode = CompileShader(L"Shaders.hlsl", "VS", "vs_5_0");
+    ComPtr<ID3DBlob> mpsByteCode = CompileShader(L"Shaders.hlsl", "PS", "ps_5_0");
+
+    // 입력 레이아웃 정의: Vertex 구조체의 PosL(POSITION)과 Color(COLOR) 정보를 셰이더에 연결
+    std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+    };
+
+    // PSO (Pipeline State Object) 생성: 셰이더, 루트시그니처, 블렌드, 래스터라이저 상태 등을 한데 묶음
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+    ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+    psoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+    psoDesc.pRootSignature = mRootSignature.Get();
+    psoDesc.VS = { reinterpret_cast<BYTE*>(mvsByteCode->GetBufferPointer()), mvsByteCode->GetBufferSize() };
+    psoDesc.PS = { reinterpret_cast<BYTE*>(mpsByteCode->GetBufferPointer()), mpsByteCode->GetBufferSize() };
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 1;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.SampleDesc.Count = 1;
+    psoDesc.SampleDesc.Quality = 0;
+    psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+
+    HRESULT hr = md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO));
+    if (FAILED(hr)) return false;
 
     return true;
 }

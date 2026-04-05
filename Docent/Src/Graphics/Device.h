@@ -3,9 +3,12 @@
 #include "d3dx12.h"
 #include <dxgi1_4.h>
 #include <wrl.h>
+#include <d3dcompiler.h> // 셰이더 컴파일
+#include "Vertex.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -26,6 +29,13 @@ public:
     void EndRender();
     // GPU 작업 완료 대기
     void FlushCommandQueue();
+
+    // 큐브를 그리기 위한 PSO 및 루트 시그니처 획득 함수
+    ID3D12RootSignature* GetRootSignature() const { return mRootSignature.Get(); }
+    ID3D12PipelineState* GetPSO() const { return mPSO.Get(); }
+
+    ID3D12Device* GetDevice() const { return md3dDevice.Get(); }
+    ID3D12GraphicsCommandList* GetCommandList() const { return mCommandList.Get(); }
 
 private:
     // 서술자 힙 생성
@@ -58,4 +68,12 @@ private:
     // 화면 크기 관련
     D3D12_VIEWPORT mScreenViewport;
     D3D12_RECT mScissorRect;
+
+    // 큐브 렌더링을 위한 전용 객체
+    ComPtr<ID3D12RootSignature> mRootSignature;
+    ComPtr<ID3D12PipelineState> mPSO;
+
+    // 셰이더 컴파일 및 PSO 생성 함수
+    bool CreateCubeRenderingPipeline();
+    ComPtr<ID3DBlob> CompileShader(const std::wstring& filename, const std::string& entrypoint, const std::string& target);
 };

@@ -5,6 +5,13 @@
 #include "../Graphics/Device.h"
 #include "../Object/Camera.h"
 #include "../Core/Timer.h"
+#include "../Graphics/Vertex.h"
+
+// 셰이더의 cbuffer cbPerObject와 동일한 구조체 정의
+struct ObjectConstants
+{
+	DirectX::XMFLOAT4X4 WorldViewProj;
+};
 
 class DocentApp
 {
@@ -39,4 +46,16 @@ protected:
 	Camera mCamera; // 카메라 객체 선언
 	Timer mTimer; // 타이머 객체
 	POINT mLastMousePos; // 마지막 마우스 위치 저장용
+
+private:
+	// 큐브 구성하는 버퍼들 (GPU 메모리)
+	ComPtr<ID3D12Resource> mVertexBuffer;
+	ComPtr<ID3D12Resource> mIndexBuffer;
+
+	// 카메라 행렬을 전달할 상수 버퍼 (매 프레임 갱신)
+	ComPtr<ID3D12Resource> mConstantBuffer;
+	void* mCBVoidPtr = nullptr; // 상수 버퍼 주소 포인터
+
+	// 큐브 데이터 생성 함수
+	bool BuildCubeGeometry();
 };

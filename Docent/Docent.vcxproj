@@ -134,7 +134,13 @@
     <ClInclude Include="Src\Core\Timer.h" />
     <ClInclude Include="Src\Graphics\d3dx12.h" />
     <ClInclude Include="Src\Graphics\Device.h" />
+    <ClInclude Include="Src\Graphics\Vertex.h" />
     <ClInclude Include="Src\Object\Camera.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders\Shaders.hlsl">
+      <FileType>Document</FileType>
+    </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
