@@ -93,11 +93,25 @@ ComPtr<ID3DBlob> Device::CompileShader(const std::wstring& filename, const std::
 // 큐브 렌더링 파이프라인 (RootSignature, PSO) 생성 핵심 로직
 bool Device::CreateCubeRenderingPipeline()
 {
-    // 루트 시그니처 생성: 셰이더가 b0 상수 버퍼(MVP 행렬)를 사용할 것임을 등록
-    CD3DX12_ROOT_PARAMETER slotRootParameter[1];
-    slotRootParameter[0].InitAsConstantBufferView(0); // register(b0)
+    // 루트 파라미터 2개 설정 (상수 버퍼 + 텍스처 테이블)
+    CD3DX12_ROOT_PARAMETER slotRootParameter[2];
+    slotRootParameter[0].InitAsConstantBufferView(0); // b0 
 
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    // t0 텍스처용 서술자 테이블 정의
+    CD3DX12_DESCRIPTOR_RANGE texTable;
+    texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    slotRootParameter[1].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    // 정적 샘플러 정의 (s0)
+    const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
+        0,
+        D3D12_FILTER_ANISOTROPIC,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+
+    // 루트 시그니처 생성
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 1, &anisotropicWrap, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     ComPtr<ID3DBlob> serializedRootSig = nullptr;
     ComPtr<ID3DBlob> errorBlob = nullptr;
@@ -111,8 +125,10 @@ bool Device::CreateCubeRenderingPipeline()
     // 입력 레이아웃 정의: Vertex 구조체의 PosL(POSITION)과 Color(COLOR) 정보를 셰이더에 연결
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout =
     {
+        // 꼭짓점 위치 데이터
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        // 텍스처 UV 데이터 (TEXCOORD, float 2개 포맷으로 변경)
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
     };
 
     // PSO (Pipeline State Object) 생성: 셰이더, 루트시그니처, 블렌드, 래스터라이저 상태 등을 한데 묶음
@@ -157,6 +173,14 @@ bool Device::CreateRtvAndDsvDescriptorHeaps()
     dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     dsvHeapDesc.NodeMask = 0;
     md3dDevice->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&mDsvHeap));
+
+    // SRV 힙 생성 (텍스처용)
+    D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+    srvHeapDesc.NumDescriptors = 1;
+    srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE; // 셰이더 접근 허용
+    srvHeapDesc.NodeMask = 0;
+    md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvHeap));
 
     return true;
 }

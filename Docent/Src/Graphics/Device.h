@@ -37,6 +37,10 @@ public:
     ID3D12Device* GetDevice() const { return md3dDevice.Get(); }
     ID3D12GraphicsCommandList* GetCommandList() const { return mCommandList.Get(); }
 
+    // SRV 힙 및 커맨드 큐 반환
+    ID3D12DescriptorHeap* GetSrvHeap() const { return mSrvHeap.Get(); }
+    ID3D12CommandQueue* GetCommandQueue() const { return mCommandQueue.Get(); }
+
 private:
     // 서술자 힙 생성
     bool CreateRtvAndDsvDescriptorHeaps();
@@ -64,6 +68,9 @@ private:
     ComPtr<ID3D12DescriptorHeap> mRtvHeap;
     ComPtr<ID3D12DescriptorHeap> mDsvHeap;
     UINT mRtvDescriptorSize = 0;
+
+    // SRV 서술자 힙 추가
+    ComPtr<ID3D12DescriptorHeap> mSrvHeap;
 
     // 화면 크기 관련
     D3D12_VIEWPORT mScreenViewport;

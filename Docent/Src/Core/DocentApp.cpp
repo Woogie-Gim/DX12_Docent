@@ -85,32 +85,58 @@ bool DocentApp::InitMainWindow()
 
 bool DocentApp::BuildCubeGeometry()
 {
-	// 큐브 꼭짓점 좌표 (X, Y, Z) 및 색상 (R, G, B, A) 정의
 	Vertex vertices[] =
 	{
-		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f) }, // 0
-		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) }, // 1
-		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f) }, // 2
-		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }, // 3
-		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) }, // 4
-		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT4(1.0f, 0.0f, 1.0f, 1.0f) }, // 5
-		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f) }, // 6
-		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT4(0.0f, 1.0f, 1.0f, 1.0f) }  // 7
+		// 앞면 (Front)
+		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT2(0.0f, 1.0f) }, // 0: 좌하단
+		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT2(0.0f, 0.0f) }, // 1: 좌상단
+		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT2(1.0f, 0.0f) }, // 2: 우상단
+		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT2(1.0f, 1.0f) }, // 3: 우하단
+
+		// 뒷면 (Back)
+		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT2(0.0f, 1.0f) }, // 4
+		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT2(0.0f, 0.0f) }, // 5
+		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT2(1.0f, 0.0f) }, // 6
+		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT2(1.0f, 1.0f) }, // 7
+
+		// 윗면 (Top)
+		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT2(0.0f, 1.0f) }, // 8
+		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT2(0.0f, 0.0f) }, // 9
+		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT2(1.0f, 0.0f) }, // 10
+		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT2(1.0f, 1.0f) }, // 11
+
+		// 아랫면 (Bottom)
+		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT2(0.0f, 1.0f) }, // 12
+		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT2(0.0f, 0.0f) }, // 13
+		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT2(1.0f, 0.0f) }, // 14
+		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT2(1.0f, 1.0f) }, // 15
+
+		// 왼쪽면 (Left)
+		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT2(0.0f, 1.0f) }, // 16
+		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT2(0.0f, 0.0f) }, // 17
+		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT2(1.0f, 0.0f) }, // 18
+		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT2(1.0f, 1.0f) }, // 19
+
+		// 오른쪽면 (Right)
+		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT2(0.0f, 1.0f) }, // 20
+		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT2(0.0f, 0.0f) }, // 21
+		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT2(1.0f, 0.0f) }, // 22
+		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT2(1.0f, 1.0f) }  // 23
 	};
 
-	// 인덱스 데이터 정의: 꼭짓점들을 연결하여 삼각형을 구성하는 순서
+	// 점이 24개로 늘어났으니, 번호(인덱스)도 그에 맞게 갱신
 	std::vector<std::uint16_t> indices =
 	{
-		0, 1, 2, 0, 2, 3, // 앞면
-		4, 6, 5, 4, 7, 6, // 뒷면
-		4, 5, 1, 4, 1, 0, // 왼쪽
-		3, 2, 6, 3, 6, 7, // 오른쪽
-		1, 5, 6, 1, 6, 2, // 윗면
-		4, 0, 3, 4, 3, 7  // 아랫면
+		0, 1, 2, 0, 2, 3,       // 앞면
+		4, 5, 6, 4, 6, 7,       // 뒷면
+		8, 9, 10, 8, 10, 11,    // 윗면
+		12, 13, 14, 12, 14, 15, // 아랫면
+		16, 17, 18, 16, 18, 19, // 왼쪽면
+		20, 21, 22, 20, 22, 23  // 오른쪽면
 	};
 
-	const UINT vbByteSize = (UINT)sizeof(Vertex) * 8;
-	const UINT ibByteSize = (UINT)sizeof(std::uint16_t) * (UINT)indices.size();
+	const UINT vbByteSize = (UINT)sizeof(Vertex) * 24;
+	const UINT ibByteSize = (UINT)sizeof(std::uint16_t) * 36; // 인덱스 총 개수는 36개로 동일
 
 	ID3D12Device* device = mDevice->GetDevice(); // Device 클래스에서 디바이스 빌려오기
 
@@ -159,6 +185,29 @@ bool DocentApp::BuildCubeGeometry()
 
 	mConstantBuffer->Map(0, nullptr, &mCBVoidPtr);
 
+	// 텍스처 로더 초기화
+	DirectX::ResourceUploadBatch upload(device);
+	upload.Begin();
+
+	// 이미지 파일 로드 (절대 경로 사용 권장)
+	std::wstring texPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\meme.png";
+	DirectX::CreateWICTextureFromFile(device, upload, texPath.c_str(), mTexture.ReleaseAndGetAddressOf());
+
+	// GPU 업로드 실행 및 대기
+	auto finish = upload.End(mDevice->GetCommandQueue());
+	finish.wait();
+
+	// SRV 뷰 생성 (텍스처 속성 정의)
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = mTexture->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = mTexture->GetDesc().MipLevels;
+
+	// SRV 힙에 텍스처 뷰 연결
+	device->CreateShaderResourceView(mTexture.Get(), &srvDesc, mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
+
 	return true;
 }
 
@@ -197,19 +246,23 @@ int DocentApp::Run()
 			// 큐브 그리기 명령 호출
 			ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
 
+			// SRV 서술자 힙 활성화
+			ID3D12DescriptorHeap* descriptorHeaps[] = { mDevice->GetSrvHeap() };
+			cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
 			// 파이프라인(PSO) 및 루트시그니처 바인딩
 			cmdList->SetGraphicsRootSignature(mDevice->GetRootSignature());
 			cmdList->SetPipelineState(mDevice->GetPSO());
 
-			// 정점 및 인덱스 버퍼 바인딩
-			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(Vertex) * 8, (UINT)sizeof(Vertex) };
+			// 정점 버퍼 크기 24개로 변경
+			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(Vertex) * 24, (UINT)sizeof(Vertex) };
 			cmdList->IASetVertexBuffers(0, 1, &vbv);
 			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(std::uint16_t) * 36, DXGI_FORMAT_R16_UINT };
 			cmdList->IASetIndexBuffer(&ibv);
 
-			// 입력 기본 위상 및 상수 버퍼 바인딩
-			cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			// 상수 버퍼(b0) 및 텍스처 테이블(t0) 바인딩
 			cmdList->SetGraphicsRootConstantBufferView(0, mConstantBuffer->GetGPUVirtualAddress());
+			cmdList->SetGraphicsRootDescriptorTable(1, mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 
 			// 최종 그리기 명령
 			cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);

@@ -4,5 +4,5 @@
 struct Vertex
 {
 	DirectX::XMFLOAT3 Pos;		// 위치 (X, Y, Z)
-	DirectX::XMFLOAT4 Color;	// 색상 (R, G, B, A)
+	DirectX::XMFLOAT2 TexC;		// 텍스처 좌표 (U, V)
 };

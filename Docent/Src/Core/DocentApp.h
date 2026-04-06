@@ -6,6 +6,8 @@
 #include "../Object/Camera.h"
 #include "../Core/Timer.h"
 #include "../Graphics/Vertex.h"
+#include "WICTextureLoader.h"		// 텍스처 로더
+#include "ResourceUploadBatch.h"	// 업로드 배치
 
 // 셰이더의 cbuffer cbPerObject와 동일한 구조체 정의
 struct ObjectConstants
@@ -58,4 +60,7 @@ private:
 
 	// 큐브 데이터 생성 함수
 	bool BuildCubeGeometry();
+
+	// 텍스처 리소스 변수 추가
+	ComPtr<ID3D12Resource> mTexture;
 };
