@@ -12,7 +12,17 @@
 // 셰이더의 cbuffer cbPerObject와 동일한 구조체 정의
 struct ObjectConstants
 {
-	DirectX::XMFLOAT4X4 WorldViewProj;
+	DirectX::XMFLOAT4X4 WorldViewProj;		// 화면 변환용
+	DirectX::XMFLOAT4X4 World;				// 법선 벡터 회전용
+
+	DirectX::XMFLOAT3 LightDir;				// 빛이 날아가는 방향
+	float pad1;								// 메모리 정렬용 패딩
+
+	DirectX::XMFLOAT3 LightColor;			// 빛의 색상 (주로 흰색)
+	float pad2;								// 메모리 정렬용 패딩
+
+	DirectX::XMFLOAT3 CameraPos;			// 카메라 위치
+	float pad3;								// 메모리 정렬용 패딩
 };
 
 class DocentApp

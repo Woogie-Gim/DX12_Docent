@@ -127,8 +127,10 @@ bool Device::CreateCubeRenderingPipeline()
     {
         // 꼭짓점 위치 데이터
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        // 텍스처 UV 데이터 (TEXCOORD, float 2개 포맷으로 변경)
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        // 법선 벡터 (위치 데이터 12바이트(float 3개) 뒤부터 시작)
+        { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        // 텍스처 UV 데이터 (TEXCOORD, float 2개 포맷, 위치 12 + 법선 12 = 총 24 바이트 뒤부터 시작)
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
     };
 
     // PSO (Pipeline State Object) 생성: 셰이더, 루트시그니처, 블렌드, 래스터라이저 상태 등을 한데 묶음

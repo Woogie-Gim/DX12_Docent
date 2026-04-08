@@ -1,5 +1,4 @@
 #pragma once
-#pragma once
 #include <DirectXMath.h>
 
 class Camera
@@ -28,6 +27,9 @@ public:
     DirectX::XMMATRIX GetView() const;
     DirectX::XMMATRIX GetProj() const;
     DirectX::XMFLOAT3 GetPosition() const { return mPosition; }
+
+    // 카메라의 현재 위치를 XMFLOAT3 형태로 반환
+    DirectX::XMFLOAT3 GetPosition3f() const { return mPosition; }
 
 private:
     // 카메라 위치 및 3축 방향 벡터
