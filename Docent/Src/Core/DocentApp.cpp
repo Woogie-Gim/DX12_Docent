@@ -208,6 +208,18 @@ bool DocentApp::BuildCubeGeometry()
 	// SRV 힙에 텍스처 뷰 연결
 	device->CreateShaderResourceView(mTexture.Get(), &srvDesc, mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
 
+	// 첫 번째 큐브(RenderItem) 생성 및 리스트에 등록
+	auto cubeItem = std::make_unique<RenderItem>();
+
+	// 월드 행렬 세팅 (일단 화면 중앙에 크기 1배로 배치)
+	XMStoreFloat4x4(&cubeItem->World, XMMatrixIdentity());
+
+	// 이 큐브가 쓸 상수 버퍼의 번호 (첫 번째니까 0번)
+	cubeItem->ObjCBIndex = 0;
+
+	// 리스트에 추가
+	mAllRitems.push_back(std::move(cubeItem));
+
 	return true;
 }
 
@@ -228,54 +240,47 @@ int DocentApp::Run()
 			mTimer.Tick(); // 프레임 시간 갱신
 			Update(mTimer); // 델타 타임 전달
 
-			// 카메라 MVP 행렬 계산
+			// 공용 정보 (PassConstants) 세팅 - 프레임당 딱 1번만 수행
+			PassConstants passConstants;
+			
 			XMMATRIX view = mCamera.GetView();
 			XMMATRIX proj = mCamera.GetProj();
-			XMMATRIX world = XMMatrixIdentity(); // 큐브는 월드 중앙에 고정
-			XMMATRIX worldViewProj = world * view * proj;
+			XMStoreFloat4x4(&passConstants.ViewProj, XMMatrixTranspose(view * proj));
 
-			// 계산된 MVP 행렬을 상수 버퍼에 복사 (GPU로 전달)
-			ObjectConstants objConstants;
-			XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
-			memcpy(mCBVoidPtr, &objConstants, sizeof(ObjectConstants));
+			passConstants.CameraPos = mCamera.GetPosition3f();
+			passConstants.LightDir = XMFLOAT3(-0.5f, -0.5f, 0.5f);
+			passConstants.LightColor = XMFLOAT3(1.0f, 1.0f, 1.0f);
 
-			// 빛 세팅 오른쪽 위, 살짝 뒤에서 큐브를 향해 쏘는 태양빛
-			objConstants.LightDir = XMFLOAT3(-0.5f, -0.5f, 0.5f);
-			objConstants.LightColor = XMFLOAT3(1.0f, 1.0f, 1.0f); // 순백색
-
-			// 카메라 세팅
-			XMFLOAT3 camPos = mCamera.GetPosition3f();
-			objConstants.CameraPos = camPos;
-
-			memcpy(mCBVoidPtr, &objConstants, sizeof(ObjectConstants));
-
-			// 렌더 타겟 세팅 및 화면 지우기 (배경색 전달)
-			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f }; // 파란색 배경
+			// 렌더 타겟 세팅 및 화면 지우기 (파란색 배경)
+			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
 			mDevice->BeginRender(clearColor);
 
-			// 큐브 그리기 명령 호출
 			ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
 
-			// SRV 서술자 힙 활성화
+			// SRV 서술자 힙 활성화 및 파이프라인 세팅
 			ID3D12DescriptorHeap* descriptorHeaps[] = { mDevice->GetSrvHeap() };
 			cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-			// 파이프라인(PSO) 및 루트시그니처 바인딩
 			cmdList->SetGraphicsRootSignature(mDevice->GetRootSignature());
 			cmdList->SetPipelineState(mDevice->GetPSO());
 
-			// 정점 버퍼 크기 24개로 변경
+			// 정점 및 인덱스 버퍼 바인딩
 			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(Vertex) * 24, (UINT)sizeof(Vertex) };
 			cmdList->IASetVertexBuffers(0, 1, &vbv);
 			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(std::uint16_t) * 36, DXGI_FORMAT_R16_UINT };
 			cmdList->IASetIndexBuffer(&ibv);
 
-			// 상수 버퍼(b0) 및 텍스처 테이블(t0) 바인딩
-			cmdList->SetGraphicsRootConstantBufferView(0, mConstantBuffer->GetGPUVirtualAddress());
-			cmdList->SetGraphicsRootDescriptorTable(1, mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+			// 개별 물체 렌더링 루프 - 리스트(mAllRitems) 개수만큼 반복
+			for (size_t i = 0; i < mAllRitems.size(); ++i)
+			{
+				auto& ri = mAllRitems[i]; // i번째 물체 가져오기
 
-			// 최종 그리기 명령
-			cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+				// 해당 물체의 월드 행렬 정보 챙기기
+				InstanceData objData;
+				XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
+
+				// 그리기 명령
+				cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+			}
 
 			mDevice->EndRender();
 		}

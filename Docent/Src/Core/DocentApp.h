@@ -1,7 +1,8 @@
 #pragma once
 #include <windows.h>
 #include <string>
-#include <memory> 
+#include <memory>
+#include <vector>
 #include "../Graphics/Device.h"
 #include "../Object/Camera.h"
 #include "../Core/Timer.h"
@@ -9,20 +10,40 @@
 #include "WICTextureLoader.h"		// 텍스처 로더
 #include "ResourceUploadBatch.h"	// 업로드 배치
 
-// 셰이더의 cbuffer cbPerObject와 동일한 구조체 정의
-struct ObjectConstants
+// 각 객체의 개별 정보를 담는 구조체
+struct InstanceData
 {
-	DirectX::XMFLOAT4X4 WorldViewProj;		// 화면 변환용
-	DirectX::XMFLOAT4X4 World;				// 법선 벡터 회전용
+	DirectX::XMFLOAT4X4 World;	// 개별 객체의 위치/회전/크기
+};
 
-	DirectX::XMFLOAT3 LightDir;				// 빛이 날아가는 방향
-	float pad1;								// 메모리 정렬용 패딩
+// 화면 전체(1프레임)가 똑같이 공유하는 정보 (카메라, 빛)
+struct PassConstants
+{
+	DirectX::XMFLOAT4X4 ViewProj;           // 카메라의 View * Proj 행렬
+	DirectX::XMFLOAT3 CameraPos;            // 카메라 위치
+	float pad1;                             // 메모리 정렬용 패딩
 
-	DirectX::XMFLOAT3 LightColor;			// 빛의 색상 (주로 흰색)
-	float pad2;								// 메모리 정렬용 패딩
+	DirectX::XMFLOAT3 LightDir;             // 빛이 날아가는 방향
+	float pad2;                             // 메모리 정렬용 패딩
 
-	DirectX::XMFLOAT3 CameraPos;			// 카메라 위치
-	float pad3;								// 메모리 정렬용 패딩
+	DirectX::XMFLOAT3 LightColor;           // 빛의 색상
+	float pad3;                             // 메모리 정렬용 패딩
+};
+
+// 물체 하나를 화면에 그리기 위해 필요한 정보들을 묶어 놓은 렌더 아이템
+struct RenderItem
+{
+	// 물체의 기본 월드 행렬 (기본값: 위치 0, 회전 0, 크기 1인 단위 행렬)
+	DirectX::XMFLOAT4X4 World = 
+	{
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
+
+	// 이 물체가 쓸 InstanceData가 상수 버퍼 배열의 몇 번째(Index)에 있는지
+	UINT ObjCBIndex = -1;
 };
 
 class DocentApp
@@ -73,4 +94,7 @@ private:
 
 	// 텍스처 리소스 변수 추가
 	ComPtr<ID3D12Resource> mTexture;
+
+	// 화면에 그릴 모든 물체(RenderItem)들을 보관하는 리스트
+	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
 };
