@@ -1,13 +1,18 @@
 // 상수 버퍼 : CPU에서 보내준 카메라의 MVP 행렬을 받음
 cbuffer cbPerObject : register(b0)
 {
-    float4x4 gWorldViewProj;     // World * View * Projection 행렬
     float4x4 gWorld;
-    float3 gLightDir;
-    float pad1;
-    float3 gLightColor;
-    float pad2;
+};
+
+// 레지스터 b1 : 화면 공용 정보 (PassConstants)
+cbuffer cbPass : register(b1)
+{
+    float4x4 gViewProj;
     float3 gCameraPos;
+    float pad1;
+    float3 gLightDir;
+    float pad2;
+    float3 gLightColor;
     float pad3;
 };
 
@@ -34,14 +39,17 @@ VertexOut VS(VertexIn vin)
 {
     VertexOut vout;
     
-    // 3D 위치를 4차원으로 변환하고 MVP 행렬 곱함
-    vout.PosH = mul(float4(vin.PosL, 1.0f), gWorldViewProj);
-    vout.PosW = mul(float4(vin.PosL, 1.0f), gWorld).xyz;
+    // 월드 변환 (물체를 3D 공간에 배치)
+    float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
+    vout.PosW = posW.xyz;
     
-    // 법선 벡터도 물체의 회전에 맞게 같이 회전시켜 줌
+    // 뷰 & 투영 변환 (카메라 렌즈를 통해 화면 좌표로 변환)
+    vout.PosH = mul(posW, gViewProj);
+    
+    // 법선 벡터 회전
     vout.NormalW = mul(vin.NormalL, (float3x3) gWorld);
     
-    vout.TexC = vin.TexC; // 좌표 그대로 전달    
+    vout.TexC = vin.TexC;
     
     return vout;
 }

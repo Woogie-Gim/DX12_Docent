@@ -124,7 +124,6 @@ bool DocentApp::BuildCubeGeometry()
 		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) }
 	};
 
-	// 점이 24개로 늘어났으니, 번호(인덱스)도 그에 맞게 갱신
 	std::vector<std::uint16_t> indices =
 	{
 		0, 1, 2, 0, 2, 3,       // 앞면
@@ -136,68 +135,56 @@ bool DocentApp::BuildCubeGeometry()
 	};
 
 	const UINT vbByteSize = (UINT)sizeof(Vertex) * 24;
-	const UINT ibByteSize = (UINT)sizeof(std::uint16_t) * 36; // 인덱스 총 개수는 36개로 동일
+	const UINT ibByteSize = (UINT)sizeof(std::uint16_t) * 36;
 
-	ID3D12Device* device = mDevice->GetDevice(); // Device 클래스에서 디바이스 빌려오기
+	ID3D12Device* device = mDevice->GetDevice();
 
-	// 임시 객체 에러를 막기 위해 구조체들을 미리 이름 있는 변수로 선언
+	// 업로드 힙 속성 정의 (이 변수를 정점, 인덱스, 상수 버퍼가 모두 재사용)
 	CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+
 	CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vbByteSize);
 	CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(ibByteSize);
-	CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(1024);
 
-	// GPU 메모리에 정점 버퍼 생성 및 데이터 복사 (Upload Heap)
-	device->CreateCommittedResource(
-		&uploadHeap,
-		D3D12_HEAP_FLAG_NONE,
-		&vbDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&mVertexBuffer));
-
+	// GPU 메모리에 정점 버퍼 생성 및 데이터 복사
+	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mVertexBuffer));
 	void* mappedData = nullptr;
 	mVertexBuffer->Map(0, nullptr, &mappedData);
 	memcpy(mappedData, vertices, vbByteSize);
 	mVertexBuffer->Unmap(0, nullptr);
 
-	// GPU 메모리에 인덱스 버퍼 생성 및 데이터 복사 (Upload Heap)
-	device->CreateCommittedResource(
-		&uploadHeap,
-		D3D12_HEAP_FLAG_NONE,
-		&ibDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&mIndexBuffer));
-
+	// GPU 메모리에 인덱스 버퍼 생성 및 데이터 복사
+	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mIndexBuffer));
 	mappedData = nullptr;
 	mIndexBuffer->Map(0, nullptr, &mappedData);
 	memcpy(mappedData, indices.data(), ibByteSize);
 	mIndexBuffer->Unmap(0, nullptr);
 
-	// 상수 버퍼 생성 및 CPU-GPU 주소 맵핑 (MVP 행렬 전달용)
-	device->CreateCommittedResource(
-		&uploadHeap,
-		D3D12_HEAP_FLAG_NONE,
-		&cbDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&mConstantBuffer));
+	// 물체 1개당 크기를 256바이트로 정렬 (128비트 아키텍처 규칙)
+	UINT instanceSize = (sizeof(InstanceData) + 255) & ~255;
+	UINT passSize = (sizeof(PassConstants) + 255) & ~255;
 
+	// 최대 100개의 물체를 그릴 수 있는 크기 + 공용 정보 1개 크기로 할당
+	UINT totalBufferSize = (instanceSize * 100) + passSize;
+
+	// cbDesc 변수를 여기서 새롭게 정의
+	CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBufferSize);
+
+	// GPU 메모리 할당 (위에서 만든 uploadHeap 재사용)
+	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mConstantBuffer));
+
+	// CPU 주소 매핑 (데이터를 쓸 수 있게 통로 개방)
 	mConstantBuffer->Map(0, nullptr, &mCBVoidPtr);
 
-	// 텍스처 로더 초기화
+	// 텍스처 로드 및 SRV 뷰 생성
 	DirectX::ResourceUploadBatch upload(device);
 	upload.Begin();
 
-	// 이미지 파일 로드 (절대 경로 사용 권장)
 	std::wstring texPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\meme.png";
 	DirectX::CreateWICTextureFromFile(device, upload, texPath.c_str(), mTexture.ReleaseAndGetAddressOf());
 
-	// GPU 업로드 실행 및 대기
 	auto finish = upload.End(mDevice->GetCommandQueue());
 	finish.wait();
 
-	// SRV 뷰 생성 (텍스처 속성 정의)
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = mTexture->GetDesc().Format;
@@ -205,19 +192,12 @@ bool DocentApp::BuildCubeGeometry()
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = mTexture->GetDesc().MipLevels;
 
-	// SRV 힙에 텍스처 뷰 연결
 	device->CreateShaderResourceView(mTexture.Get(), &srvDesc, mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
 
 	// 첫 번째 큐브(RenderItem) 생성 및 리스트에 등록
 	auto cubeItem = std::make_unique<RenderItem>();
-
-	// 월드 행렬 세팅 (일단 화면 중앙에 크기 1배로 배치)
 	XMStoreFloat4x4(&cubeItem->World, XMMatrixIdentity());
-
-	// 이 큐브가 쓸 상수 버퍼의 번호 (첫 번째니까 0번)
-	cubeItem->ObjCBIndex = 0;
-
-	// 리스트에 추가
+	cubeItem->ObjCBIndex = 0; // 이 큐브가 쓸 상수 버퍼의 번호 (0번)
 	mAllRitems.push_back(std::move(cubeItem));
 
 	return true;
@@ -240,6 +220,10 @@ int DocentApp::Run()
 			mTimer.Tick(); // 프레임 시간 갱신
 			Update(mTimer); // 델타 타임 전달
 
+			// 메모리 정렬 크기 (BuildCubeGeometry에서 계산했던 것과 동일)
+			UINT instanceSize = (sizeof(InstanceData) + 255) & ~255;
+			UINT passSize = (sizeof(PassConstants) + 255) & ~255;
+
 			// 공용 정보 (PassConstants) 세팅 - 프레임당 딱 1번만 수행
 			PassConstants passConstants;
 			
@@ -250,6 +234,10 @@ int DocentApp::Run()
 			passConstants.CameraPos = mCamera.GetPosition3f();
 			passConstants.LightDir = XMFLOAT3(-0.5f, -0.5f, 0.5f);
 			passConstants.LightColor = XMFLOAT3(1.0f, 1.0f, 1.0f);
+
+			// 공용 정보는 인스턴스 100개(instanceSize * 100) 뒤에 위치
+			UINT passOffset = instanceSize * 100;
+			memcpy((BYTE*)mCBVoidPtr + passOffset, &passConstants, sizeof(PassConstants));
 
 			// 렌더 타겟 세팅 및 화면 지우기 (파란색 배경)
 			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
@@ -268,15 +256,34 @@ int DocentApp::Run()
 			cmdList->IASetVertexBuffers(0, 1, &vbv);
 			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(std::uint16_t) * 36, DXGI_FORMAT_R16_UINT };
 			cmdList->IASetIndexBuffer(&ibv);
+			// GPU에게 점 3개씩 이어서 삼각형을 만들라고 지시
+			cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+			// 상수 버퍼의 가장 첫 번째 GPU 주소 가져오기
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = mConstantBuffer->GetGPUVirtualAddress();
+
+			// Slot 1 (b1): 공용 정보 상수 버퍼 바인딩
+			cmdList->SetGraphicsRootConstantBufferView(1, cbAddress + passOffset);
+
+			// Slot 2 (t0): 텍스처 테이블 바인딩
+			cmdList->SetGraphicsRootDescriptorTable(2, mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 
 			// 개별 물체 렌더링 루프 - 리스트(mAllRitems) 개수만큼 반복
 			for (size_t i = 0; i < mAllRitems.size(); ++i)
 			{
-				auto& ri = mAllRitems[i]; // i번째 물체 가져오기
+				auto& ri = mAllRitems[i];
 
-				// 해당 물체의 월드 행렬 정보 챙기기
 				InstanceData objData;
 				XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
+
+				// 현재 물체의 인덱스에 맞춰 메모리 오프셋 계산 (0번, 256번, 512번...)
+				UINT objOffset = ri->ObjCBIndex * instanceSize;
+
+				// 계산된 위치에 월드 행렬 복사
+				memcpy((BYTE*)mCBVoidPtr + objOffset, &objData, sizeof(InstanceData));
+
+				// Slot 0 (b0): 현재 물체의 상수 버퍼 바인딩
+				cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
 
 				// 그리기 명령
 				cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);

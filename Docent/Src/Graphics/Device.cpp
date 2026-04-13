@@ -93,14 +93,19 @@ ComPtr<ID3DBlob> Device::CompileShader(const std::wstring& filename, const std::
 // 큐브 렌더링 파이프라인 (RootSignature, PSO) 생성 핵심 로직
 bool Device::CreateCubeRenderingPipeline()
 {
-    // 루트 파라미터 2개 설정 (상수 버퍼 + 텍스처 테이블)
-    CD3DX12_ROOT_PARAMETER slotRootParameter[2];
-    slotRootParameter[0].InitAsConstantBufferView(0); // b0 
+    // 루트 파라미터 3개 설정
+    // Slot 0 : 개별 물체용 상수 버퍼 (b0, InstanceData), 자주 바뀌는 데이터
+    // Slot 1 : 공용 정보용 상수 버퍼 (b1, PassConstants), 프레임 당 한 번 바뀜
+    // Slot 2 : 텍스처 테이블 (t0)
+    CD3DX12_ROOT_PARAMETER slotRootParameter[3];
+
+    slotRootParameter[0].InitAsConstantBufferView(0); // register(b0)
+    slotRootParameter[1].InitAsConstantBufferView(1); // register(b1)
 
     // t0 텍스처용 서술자 테이블 정의
     CD3DX12_DESCRIPTOR_RANGE texTable;
     texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-    slotRootParameter[1].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+    slotRootParameter[2].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
     // 정적 샘플러 정의 (s0)
     const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
@@ -111,7 +116,8 @@ bool Device::CreateCubeRenderingPipeline()
         D3D12_TEXTURE_ADDRESS_MODE_WRAP);
 
     // 루트 시그니처 생성
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 1, &anisotropicWrap, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(3, slotRootParameter, 1, &anisotropicWrap,
+        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     ComPtr<ID3DBlob> serializedRootSig = nullptr;
     ComPtr<ID3DBlob> errorBlob = nullptr;
