@@ -13,7 +13,9 @@
 // 각 객체의 개별 정보를 담는 구조체
 struct InstanceData
 {
-	DirectX::XMFLOAT4X4 World;	// 개별 객체의 위치/회전/크기
+	DirectX::XMFLOAT4X4 World;		// 개별 객체의 위치/회전/크기
+	DirectX::XMFLOAT2 UVOffset;		// 그림을 어디서부터 자를지
+	DirectX::XMFLOAT2 UVScale;		// 그림을 얼마나 크게 자를지
 };
 
 // 화면 전체(1프레임)가 똑같이 공유하는 정보 (카메라, 빛)
@@ -44,6 +46,9 @@ struct RenderItem
 
 	// 이 물체가 쓸 InstanceData가 상수 버퍼 배열의 몇 번째(Index)에 있는지
 	UINT ObjCBIndex = -1;
+
+	DirectX::XMFLOAT2 UVOffset = { 0.0f, 0.0f };
+	DirectX::XMFLOAT2 UVScale = { 1.0f, 1.0f };
 };
 
 class DocentApp

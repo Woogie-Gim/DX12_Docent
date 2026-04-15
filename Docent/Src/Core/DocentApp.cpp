@@ -194,11 +194,41 @@ bool DocentApp::BuildCubeGeometry()
 
 	device->CreateShaderResourceView(mTexture.Get(), &srvDesc, mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
 
-	// 첫 번째 큐브(RenderItem) 생성 및 리스트에 등록
-	auto cubeItem = std::make_unique<RenderItem>();
-	XMStoreFloat4x4(&cubeItem->World, XMMatrixIdentity());
-	cubeItem->ObjCBIndex = 0; // 이 큐브가 쓸 상수 버퍼의 번호 (0번)
-	mAllRitems.push_back(std::move(cubeItem));
+	// 3*3 퍼즐 큐브 생성 로직
+	int rows = 3;
+	int cols = 3;
+
+	float cubeSpacing = 1.1f; // 큐브 사이의 간격 (1.0이면 딱 붙음)
+
+	// 전체 그림을 3등분 하므로, 스케일은 1/3 (0.333f)
+	float uvScaleU = 1.0f / cols;
+	float uvScaleV = 1.0f / rows;
+
+	UINT cbIndex = 0; // 상수 버퍼 번호표
+
+	for (int y = 0; y < rows; ++y)
+	{
+		for (int x = 0; x < cols; ++x)
+		{
+			auto cubeItem = std::make_unique<RenderItem>();
+
+			// 월드 행렬 세팅 (위치 잡기)
+			// 화면 중앙을 기준으로 3x3 격자 형태로 배치
+			float posX = (x - 1) * cubeSpacing;
+			float posY = -(y - 1) * cubeSpacing; // 3D Y축은 위가 양수이므로 반대로
+
+			XMMATRIX worldMat = XMMatrixTranslation(posX, posY, 0.0f);
+			XMStoreFloat4x4(&cubeItem->World, worldMat);
+
+			// 이 큐브가 담당할 UV 자르기 영역 계산
+			cubeItem->UVOffset = XMFLOAT2(x * uvScaleU, y * uvScaleV);
+			cubeItem->UVScale = XMFLOAT2(uvScaleU, uvScaleV);
+
+			// 번호표 부여 및 리스트 추가
+			cubeItem->ObjCBIndex = cbIndex++;
+			mAllRitems.push_back(std::move(cubeItem));
+		}
+	}
 
 	return true;
 }
@@ -275,6 +305,10 @@ int DocentApp::Run()
 
 				InstanceData objData;
 				XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
+
+				// UV 자르기 정보 전달
+				objData.UVOffset = ri->UVOffset;
+				objData.UVScale = ri->UVScale;
 
 				// 현재 물체의 인덱스에 맞춰 메모리 오프셋 계산 (0번, 256번, 512번...)
 				UINT objOffset = ri->ObjCBIndex * instanceSize;

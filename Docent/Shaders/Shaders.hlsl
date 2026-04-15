@@ -1,7 +1,9 @@
-// 상수 버퍼 : CPU에서 보내준 카메라의 MVP 행렬을 받음
+// 레지스터 b0 : 개별 물체 정보
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
+    float2 gUVOffset;
+    float2 gUVScale;
 };
 
 // 레지스터 b1 : 화면 공용 정보 (PassConstants)
@@ -49,7 +51,8 @@ VertexOut VS(VertexIn vin)
     // 법선 벡터 회전
     vout.NormalW = mul(vin.NormalL, (float3x3) gWorld);
     
-    vout.TexC = vin.TexC;
+    // 원본 UV 좌표에 스케일을 곱하고 오프셋을 더함
+    vout.TexC = (vin.TexC * gUVScale) + gUVOffset;
     
     return vout;
 }
