@@ -9,6 +9,7 @@
 #include "../Graphics/Vertex.h"
 #include "WICTextureLoader.h"		// 텍스처 로더
 #include "ResourceUploadBatch.h"	// 업로드 배치
+#include <DirectXCollision.h>		// 충돌 처리를 위한 라이브러리
 
 // 각 객체의 개별 정보를 담는 구조체
 struct InstanceData
@@ -49,6 +50,9 @@ struct RenderItem
 
 	DirectX::XMFLOAT2 UVOffset = { 0.0f, 0.0f };
 	DirectX::XMFLOAT2 UVScale = { 1.0f, 1.0f };
+
+	// 큐브를 감싸는 3D 투명 박스
+	DirectX::BoundingBox Bounds;
 };
 
 class DocentApp
@@ -102,4 +106,8 @@ private:
 
 	// 화면에 그릴 모든 물체(RenderItem)들을 보관하는 리스트
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
+
+	// 피킹 관련 변수 및 함수
+	RenderItem* mPickedItem = nullptr;	// 현재 마우스로 잡고 있는 큐브
+	void Pick(int sx, int sy);			// 광선을 쏴서 큐브를 찾는 함수
 };
