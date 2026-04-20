@@ -53,6 +53,9 @@ struct RenderItem
 
 	// 큐브를 감싸는 3D 투명 박스
 	DirectX::BoundingBox Bounds;
+
+	// 퍼즐 조각의 원래 위치
+	DirectX::XMFLOAT3 OriginalPos = { 0.0f, 0.0f, 0.0f };
 };
 
 class DocentApp

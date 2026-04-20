@@ -220,6 +220,9 @@ bool DocentApp::BuildCubeGeometry()
 			XMMATRIX worldMat = XMMatrixTranslation(posX, posY, 0.0f);
 			XMStoreFloat4x4(&cubeItem->World, worldMat);
 
+			// 현재 위치를 원래 위치로 기억
+			cubeItem->OriginalPos = XMFLOAT3(posX, posY, 0.0f);
+
 			// 이 큐브가 담당할 UV 자르기 영역 계산
 			cubeItem->UVOffset = XMFLOAT2(x * uvScaleU, y * uvScaleV);
 			cubeItem->UVScale = XMFLOAT2(uvScaleU, uvScaleV);
@@ -372,10 +375,40 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		return 0;
 
 	case WM_LBUTTONUP:
-		// 마우스를 떼면 잡고 있던 큐브를 놓기
-		mPickedItem = nullptr;
+		// 마우스를 뗄 때 잡고 있던 큐브가 있다면 스냅 검사
+		if (mPickedItem != nullptr)
+		{
+			// 큐브의 현재 위치 가져오기
+			XMVECTOR currentPos = XMVectorSet(mPickedItem->World._41, mPickedItem->World._42, mPickedItem->World._43, 1.0f);
+
+			// 큐브의 정답 위치 가져오기
+			XMVECTOR targetPos = XMLoadFloat3(&mPickedItem->OriginalPos);
+
+			// 두 위치 사이의 거리(Distance) 계산
+			XMVECTOR vectorDist = XMVector3Length(XMVectorSubtract(currentPos, targetPos));
+			float dist = XMVectorGetX(vectorDist);
+
+			// 스냅 임계값(Threshold) 확인: 거리가 0.3f 이내라면 자석처럼
+			float snapThreshold = 0.3f;
+
+			if (dist < snapThreshold)
+			{
+				// 월드 행렬을 정답 위치로 덮어쓰기 (회전은 없다고 가정)
+				XMMATRIX snapWorld = XMMatrixTranslation(mPickedItem->OriginalPos.x, mPickedItem->OriginalPos.y, mPickedItem->OriginalPos.z);
+				XMStoreFloat4x4(&mPickedItem->World, snapWorld);
+
+				// 충돌 박스도 정답 위치로 강제 이동
+				mPickedItem->Bounds.Center = mPickedItem->OriginalPos;
+
+				OutputDebugStringA("퍼즐 조각이 정답 위치에 맞았습니다!\n");
+			}
+
+			// 큐브 놓기 (초기화)
+			mPickedItem = nullptr;
+		}
 		ReleaseCapture();
 		return 0;
+
 	case WM_MBUTTONUP:
 	case WM_RBUTTONUP:
 		ReleaseCapture();
