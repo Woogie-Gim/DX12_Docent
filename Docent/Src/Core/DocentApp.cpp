@@ -1,4 +1,7 @@
 ﻿#include "DocentApp.h"
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 using namespace DirectX;
 
@@ -85,78 +88,41 @@ bool DocentApp::InitMainWindow()
 
 bool DocentApp::BuildCubeGeometry()
 {
-	Vertex vertices[] =
+	// 빈 바구니 준비
+	std::vector<Vertex> vertices;
+	std::vector<std::uint16_t> indices;
+
+	// Assimp 에게 바구니 주고 모델 데이터 담아오라 명령
+	std::string modelPath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\frame.obj";	if (!LoadModel(modelPath, vertices, indices))
 	{
-		// 앞면 (Z축 음수 방향을 바라봄)
-		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT2(0.0f, 1.0f) },
-		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT2(0.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT2(1.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, -1.0f), XMFLOAT2(1.0f, 1.0f) },
+		// 로드 실패 시 에러 메시지는 LoadModel 안에서 출력되므로 그냥 false 리턴
+		return false;
+	}
 
-		// 뒷면 (Z축 양수 방향을 바라봄)
-		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) },
-		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) },
-		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) },
-		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) },
-
-		// 윗면 (Y축 양수 방향을 바라봄)
-		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
-		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
-
-		// 아랫면 (Y축 음수 방향)
-		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
-		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, -1.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
-
-		// 왼쪽면 (X축 음수 방향)
-		{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
-		{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-		{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-		{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(-1.0f, 0.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
-
-		// 오른쪽면 (X축 양수 방향)
-		{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
-		{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-		{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) }
-	};
-
-	std::vector<std::uint16_t> indices =
-	{
-		0, 1, 2, 0, 2, 3,       // 앞면
-		4, 5, 6, 4, 6, 7,       // 뒷면
-		8, 9, 10, 8, 10, 11,    // 윗면
-		12, 13, 14, 12, 14, 15, // 아랫면
-		16, 17, 18, 16, 18, 19, // 왼쪽면
-		20, 21, 22, 20, 22, 23  // 오른쪽면
-	};
-
-	const UINT vbByteSize = (UINT)sizeof(Vertex) * 24;
-	const UINT ibByteSize = (UINT)sizeof(std::uint16_t) * 36;
+	// 바구니에 담긴 데이터의 총 바이트 크기 계산
+	mVertexByteSize = (UINT)sizeof(Vertex) * (UINT)vertices.size();
+	mIndexByteSize = (UINT)sizeof(std::uint16_t) * (UINT)indices.size();
 
 	ID3D12Device* device = mDevice->GetDevice();
 
 	// 업로드 힙 속성 정의 (이 변수를 정점, 인덱스, 상수 버퍼가 모두 재사용)
 	CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
 
-	CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vbByteSize);
-	CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(ibByteSize);
+	CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(mVertexByteSize);
+	CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(mIndexByteSize);
 
 	// GPU 메모리에 정점 버퍼 생성 및 데이터 복사
 	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mVertexBuffer));
 	void* mappedData = nullptr;
 	mVertexBuffer->Map(0, nullptr, &mappedData);
-	memcpy(mappedData, vertices, vbByteSize);
+	memcpy(mappedData, vertices.data(), mVertexByteSize);
 	mVertexBuffer->Unmap(0, nullptr);
 
 	// GPU 메모리에 인덱스 버퍼 생성 및 데이터 복사
 	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mIndexBuffer));
 	mappedData = nullptr;
 	mIndexBuffer->Map(0, nullptr, &mappedData);
-	memcpy(mappedData, indices.data(), ibByteSize);
+	memcpy(mappedData, indices.data(), mIndexByteSize);
 	mIndexBuffer->Unmap(0, nullptr);
 
 	// 물체 1개당 크기를 256바이트로 정렬 (128비트 아키텍처 규칙)
@@ -236,6 +202,9 @@ bool DocentApp::BuildCubeGeometry()
 				XMFLOAT3(0.5f, 0.5f, 0.5f)
 			);
 
+			// 로드한 모델의 인덱스 총 개수를 저장
+			cubeItem->IndexCount = (UINT)indices.size();
+
 			mAllRitems.push_back(std::move(cubeItem));
 		}
 	}
@@ -292,9 +261,9 @@ int DocentApp::Run()
 			cmdList->SetPipelineState(mDevice->GetPSO());
 
 			// 정점 및 인덱스 버퍼 바인딩
-			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(Vertex) * 24, (UINT)sizeof(Vertex) };
+			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), mVertexByteSize, (UINT)sizeof(Vertex) };
 			cmdList->IASetVertexBuffers(0, 1, &vbv);
-			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), (UINT)sizeof(std::uint16_t) * 36, DXGI_FORMAT_R16_UINT };
+			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), mIndexByteSize, DXGI_FORMAT_R16_UINT };
 			cmdList->IASetIndexBuffer(&ibv);
 			// GPU에게 점 3개씩 이어서 삼각형을 만들라고 지시
 			cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -329,8 +298,8 @@ int DocentApp::Run()
 				// Slot 0 (b0): 현재 물체의 상수 버퍼 바인딩
 				cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
 
-				// 그리기 명령
-				cmdList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+				// 그리기 명령, 내가 가진 인덱스 개수 만큼만 그림
+				cmdList->DrawIndexedInstanced(ri->IndexCount, 1, 0, 0, 0);
 			}
 
 			mDevice->EndRender();
@@ -505,5 +474,84 @@ void DocentApp::Pick(int sx, int sy)
 	if (mPickedItem != nullptr)
 	{
 		OutputDebugStringA("큐브 클릭 성공! (Raycast Hit!)\n");
+	}
+}
+
+bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices)
+{
+	Assimp::Importer importer;
+	// FBX는 단위가 제각각일 수 있어 GlobalScale 옵션을 고려할 수 있습니다.
+	const aiScene* scene = importer.ReadFile(filename,
+		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded);
+
+	if (!scene) return false;
+
+	// 루트 노드부터 시작해서 모든 자식 노드의 메쉬를 수집합니다.
+	ProcessNode(scene->mRootNode, scene, vertices, indices);
+
+	return true;
+}
+
+// 재귀적으로 노드를 방문하며 메쉬를 꺼내는 함수
+void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices)
+{
+	// 현재 노드가 가진 모든 메쉬 처리
+	for (unsigned int i = 0; i < node->mNumMeshes; i++)
+	{
+		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+		ProcessMesh(mesh, vertices, indices);
+	}
+
+	// 자식 노드들도 똑같이 처리 (재귀)
+	for (unsigned int i = 0; i < node->mNumChildren; i++)
+	{
+		ProcessNode(node->mChildren[i], scene, vertices, indices);
+	}
+}
+
+// 실제 정점과 인덱스를 뽑아내는 함수
+void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices)
+{
+	// 현재까지 바구니(vertices)에 담긴 정점의 개수를 기억해 둠
+	UINT vertexOffset = (UINT)vertices.size();
+
+	// 정점(Vertices) 정보 빼오기
+	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
+	{
+		Vertex vertex;
+
+		vertex.Pos.x = mesh->mVertices[i].x;
+		vertex.Pos.y = mesh->mVertices[i].y;
+		vertex.Pos.z = mesh->mVertices[i].z;
+
+		if (mesh->HasNormals())
+		{
+			vertex.Normal.x = mesh->mNormals[i].x;
+			vertex.Normal.y = mesh->mNormals[i].y;
+			vertex.Normal.z = mesh->mNormals[i].z;
+		}
+
+		if (mesh->mTextureCoords[0])
+		{
+			vertex.TexC.x = mesh->mTextureCoords[0][i].x;
+			vertex.TexC.y = mesh->mTextureCoords[0][i].y;
+		}
+		else
+		{
+			vertex.TexC = XMFLOAT2(0.0f, 0.0f);
+		}
+
+		vertices.push_back(vertex);
+	}
+
+	// 인덱스(Indices) 정보 빼오기
+	for (unsigned int i = 0; i < mesh->mNumFaces; i++)
+	{
+		aiFace face = mesh->mFaces[i];
+		for (unsigned int j = 0; j < face.mNumIndices; j++)
+		{
+			// 0번부터 시작하는 인덱스에, 이전에 담아둔 정점 개수(Offset)를 더함
+			indices.push_back(face.mIndices[j] + vertexOffset);
+		}
 	}
 }

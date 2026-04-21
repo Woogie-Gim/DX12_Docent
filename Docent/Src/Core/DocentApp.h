@@ -1,4 +1,7 @@
 #pragma once
+
+#define NOMINMAX
+
 #include <windows.h>
 #include <string>
 #include <memory>
@@ -10,6 +13,11 @@
 #include "WICTextureLoader.h"		// 텍스처 로더
 #include "ResourceUploadBatch.h"	// 업로드 배치
 #include <DirectXCollision.h>		// 충돌 처리를 위한 라이브러리
+
+// Assimp 구조체 전방 선언
+struct aiNode;
+struct aiScene;
+struct aiMesh;
 
 // 각 객체의 개별 정보를 담는 구조체
 struct InstanceData
@@ -56,6 +64,9 @@ struct RenderItem
 
 	// 퍼즐 조각의 원래 위치
 	DirectX::XMFLOAT3 OriginalPos = { 0.0f, 0.0f, 0.0f };
+
+	// 이 물체를 그릴 때 필요한 총 인덱스 개수
+	UINT IndexCount = 0;
 };
 
 class DocentApp
@@ -97,6 +108,10 @@ private:
 	ComPtr<ID3D12Resource> mVertexBuffer;
 	ComPtr<ID3D12Resource> mIndexBuffer;
 
+	// 버퍼의 뷰(View)를 만들 때 쓸 바이트 크기 기억용
+	UINT mVertexByteSize = 0;
+	UINT mIndexByteSize = 0;
+
 	// 카메라 행렬을 전달할 상수 버퍼 (매 프레임 갱신)
 	ComPtr<ID3D12Resource> mConstantBuffer;
 	void* mCBVoidPtr = nullptr; // 상수 버퍼 주소 포인터
@@ -113,4 +128,8 @@ private:
 	// 피킹 관련 변수 및 함수
 	RenderItem* mPickedItem = nullptr;	// 현재 마우스로 잡고 있는 큐브
 	void Pick(int sx, int sy);			// 광선을 쏴서 큐브를 찾는 함수
+
+	bool LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices);
+	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices);
+	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices);
 };
