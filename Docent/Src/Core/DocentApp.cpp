@@ -183,7 +183,14 @@ bool DocentApp::BuildCubeGeometry()
 			float posX = (x - 1) * cubeSpacing;
 			float posY = -(y - 1) * cubeSpacing; // 3D Y축은 위가 양수이므로 반대로
 
-			XMMATRIX worldMat = XMMatrixTranslation(posX, posY, 0.0f);
+			// 크기 조절
+			XMMATRIX scaleMat = XMMatrixScaling(0.01f, 0.01f, 0.01f);
+
+			// 이동
+			XMMATRIX transMat = XMMatrixTranslation(posX, posY, 0.0f);
+
+			// S * R * T 순서로 곱하기 (회전이 없으므로 S * T)
+			XMMATRIX worldMat = scaleMat * transMat;
 			XMStoreFloat4x4(&cubeItem->World, worldMat);
 
 			// 현재 위치를 원래 위치로 기억
