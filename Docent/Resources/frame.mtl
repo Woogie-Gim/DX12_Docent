@@ -1,0 +1,14 @@
+# Blender 5.1.1 MTL File: 'Sketchfab_2023_01_22_13_46_04.blend'
+# www.blender.org
+
+newmtl T_frame
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd C:/SM_picture_frames_T_frame_BaseColor.1001.png
+map_Ns C:/SM_picture_frames_T_frame_Roughness.1001.png
+map_refl C:/SM_picture_frames_T_frame_Metallic.1001.png
+map_Bump -bm 1.000000 C:/SM_picture_frames_T_frame_Normal.1001.png

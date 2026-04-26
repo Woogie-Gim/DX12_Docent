@@ -184,7 +184,7 @@ bool DocentApp::BuildCubeGeometry()
 			float posY = -(y - 1) * cubeSpacing; // 3D Y축은 위가 양수이므로 반대로
 
 			// 크기 조절
-			XMMATRIX scaleMat = XMMatrixScaling(0.01f, 0.01f, 0.01f);
+			XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
 
 			// 이동
 			XMMATRIX transMat = XMMatrixTranslation(posX, posY, 0.0f);
