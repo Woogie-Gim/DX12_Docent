@@ -91,13 +91,20 @@ bool DocentApp::BuildCubeGeometry()
 	// 빈 바구니 준비
 	std::vector<Vertex> vertices;
 	std::vector<std::uint16_t> indices;
+	std::vector<SubmeshGeometry> submeshes;
 
 	// Assimp 에게 바구니 주고 모델 데이터 담아오라 명령
-	std::string modelPath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\frame.obj";	if (!LoadModel(modelPath, vertices, indices))
+	std::string modelPath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\frame.obj";	
+	
+	if (!LoadModel(modelPath, vertices, indices, submeshes))
 	{
 		// 로드 실패 시 에러 메시지는 LoadModel 안에서 출력되므로 그냥 false 리턴
 		return false;
 	}
+
+	// 원본 정점 데이터 기반 기본 충돌 박스 생성
+	DirectX::BoundingBox baseBox;
+	DirectX::BoundingBox::CreateFromPoints(baseBox, vertices.size(), &vertices[0].Pos, sizeof(Vertex));
 
 	// 바구니에 담긴 데이터의 총 바이트 크기 계산
 	mVertexByteSize = (UINT)sizeof(Vertex) * (UINT)vertices.size();
@@ -203,14 +210,11 @@ bool DocentApp::BuildCubeGeometry()
 			// 번호표 부여 및 리스트 추가
 			cubeItem->ObjCBIndex = cbIndex++;
 
-			// 충돌 박스 설정, 중심점은 큐브이 현재 위치 (posX, posY, 0)
-			cubeItem->Bounds = DirectX::BoundingBox(
-				XMFLOAT3(posX, posY, 0.0f),
-				XMFLOAT3(0.5f, 0.5f, 0.5f)
-			);
+			// 원본 박스(baseBox)에 현재 액자의 크기/위치(worldMat)를 한 번만 적용
+			baseBox.Transform(cubeItem->Bounds, worldMat);
 
-			// 로드한 모델의 인덱스 총 개수를 저장
-			cubeItem->IndexCount = (UINT)indices.size();
+			// 쪼개진 서브메쉬 정보들을 통째로 넘겨줌
+			cubeItem->Submeshes = submeshes;
 
 			mAllRitems.push_back(std::move(cubeItem));
 		}
@@ -305,8 +309,11 @@ int DocentApp::Run()
 				// Slot 0 (b0): 현재 물체의 상수 버퍼 바인딩
 				cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
 
-				// 그리기 명령, 내가 가진 인덱스 개수 만큼만 그림
-				cmdList->DrawIndexedInstanced(ri->IndexCount, 1, 0, 0, 0);
+				for (const auto& submesh : ri->Submeshes)
+				{
+					// GPU에게 '몇 개'를 그릴지 '몇 번째 인덱스부터' 그릴지 정확히 지시
+					cmdList->DrawIndexedInstanced(submesh.IndexCount, 1, submesh.StartIndexLocation, 0, 0);
+				}
 			}
 
 			mDevice->EndRender();
@@ -484,7 +491,7 @@ void DocentApp::Pick(int sx, int sy)
 	}
 }
 
-bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices)
+bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes) 
 {
 	Assimp::Importer importer;
 	// FBX는 단위가 제각각일 수 있어 GlobalScale 옵션을 고려할 수 있습니다.
@@ -494,31 +501,37 @@ bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vert
 	if (!scene) return false;
 
 	// 루트 노드부터 시작해서 모든 자식 노드의 메쉬를 수집합니다.
-	ProcessNode(scene->mRootNode, scene, vertices, indices);
+	ProcessNode(scene->mRootNode, scene, vertices, indices, submeshes);
 
 	return true;
 }
 
 // 재귀적으로 노드를 방문하며 메쉬를 꺼내는 함수
-void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices)
+void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
 	// 현재 노드가 가진 모든 메쉬 처리
 	for (unsigned int i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		ProcessMesh(mesh, vertices, indices);
+		ProcessMesh(mesh, vertices, indices, submeshes);
 	}
 
 	// 자식 노드들도 똑같이 처리 (재귀)
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
 	{
-		ProcessNode(node->mChildren[i], scene, vertices, indices);
+		ProcessNode(node->mChildren[i], scene, vertices, indices, submeshes);
+
 	}
 }
 
 // 실제 정점과 인덱스를 뽑아내는 함수
-void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices)
+void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
+	// 서브메쉬 정보 기록 시작
+	SubmeshGeometry submesh;
+	submesh.StartIndexLocation = (UINT)indices.size(); // 현재 인덱스 시작 위치
+	submesh.MaterialIndex = mesh->mMaterialIndex;      // Assimp가 알려주는 재질 번호
+
 	// 현재까지 바구니(vertices)에 담긴 정점의 개수를 기억해 둠
 	UINT vertexOffset = (UINT)vertices.size();
 
@@ -561,4 +574,8 @@ void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::ve
 			indices.push_back(face.mIndices[j] + vertexOffset);
 		}
 	}
+
+	// 기록 마무리에 추가된 인덱스 개수 계산
+	submesh.IndexCount = (UINT)indices.size() - submesh.StartIndexLocation;
+	submeshes.push_back(submesh);
 }

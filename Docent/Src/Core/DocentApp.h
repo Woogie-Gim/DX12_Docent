@@ -41,6 +41,14 @@ struct PassConstants
 	float pad3;                             // 메모리 정렬용 패딩
 };
 
+// 부분 메쉬(Submesh) 정보를 담는 구조체
+struct SubmeshGeometry
+{
+	UINT IndexCount = 0;           // 이 부품의 인덱스 개수
+	UINT StartIndexLocation = 0;   // 글로벌 인덱스 배열에서 시작 위치
+	UINT MaterialIndex = 0;        // 이 부품이 사용할 재질(텍스처) 번호
+};
+
 // 물체 하나를 화면에 그리기 위해 필요한 정보들을 묶어 놓은 렌더 아이템
 struct RenderItem
 {
@@ -65,8 +73,8 @@ struct RenderItem
 	// 퍼즐 조각의 원래 위치
 	DirectX::XMFLOAT3 OriginalPos = { 0.0f, 0.0f, 0.0f };
 
-	// 이 물체를 그릴 때 필요한 총 인덱스 개수
-	UINT IndexCount = 0;
+	// 이 물체가 가진 여러 개의 부분 메쉬 리스트
+	std::vector<SubmeshGeometry> Submeshes;
 };
 
 class DocentApp
@@ -129,7 +137,7 @@ private:
 	RenderItem* mPickedItem = nullptr;	// 현재 마우스로 잡고 있는 큐브
 	void Pick(int sx, int sy);			// 광선을 쏴서 큐브를 찾는 함수
 
-	bool LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices);
-	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices);
-	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices);
+	bool LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes);
+	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes);
+	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes);
 };
