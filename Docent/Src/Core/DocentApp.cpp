@@ -148,24 +148,43 @@ bool DocentApp::BuildCubeGeometry()
 	// CPU 주소 매핑 (데이터를 쓸 수 있게 통로 개방)
 	mConstantBuffer->Map(0, nullptr, &mCBVoidPtr);
 
+	// SRV 증가 사이즈 캐싱
+	mCbvSrvUavDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 	// 텍스처 로드 및 SRV 뷰 생성
 	DirectX::ResourceUploadBatch upload(device);
 	upload.Begin();
 
-	std::wstring texPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\meme.png";
-	DirectX::CreateWICTextureFromFile(device, upload, texPath.c_str(), mTexture.ReleaseAndGetAddressOf());
+	// 두 개의 텍스처 경로 지정
+	std::wstring woodTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\wood.png";
+	std::wstring memeTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\meme.png";
+
+	DirectX::CreateWICTextureFromFile(device, upload, woodTexPath.c_str(), mWoodTexture.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, memeTexPath.c_str(), mMemeTexture.ReleaseAndGetAddressOf());
 
 	auto finish = upload.End(mDevice->GetCommandQueue());
 	finish.wait();
 
+	// SRV 서술자 힙의 첫 번째 핸들 가져오기
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
+
+	// 0번 슬롯: 나무 텍스처 SRV 생성
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = mTexture->GetDesc().Format;
+	srvDesc.Format = mWoodTexture->GetDesc().Format;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = mTexture->GetDesc().MipLevels;
+	srvDesc.Texture2D.MipLevels = mWoodTexture->GetDesc().MipLevels;
 
-	device->CreateShaderResourceView(mTexture.Get(), &srvDesc, mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
+	device->CreateShaderResourceView(mWoodTexture.Get(), &srvDesc, hDescriptor);
+
+	// 1번 슬롯: 밈 사진 텍스처 SRV 생성 (핸들을 1칸 이동)
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+
+	srvDesc.Format = mMemeTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mMemeTexture->GetDesc().MipLevels;
+
+	device->CreateShaderResourceView(mMemeTexture.Get(), &srvDesc, hDescriptor);
 
 	// 3*3 퍼즐 큐브 생성 로직
 	int rows = 3;
@@ -285,10 +304,10 @@ int DocentApp::Run()
 			// Slot 1 (b1): 공용 정보 상수 버퍼 바인딩
 			cmdList->SetGraphicsRootConstantBufferView(1, cbAddress + passOffset);
 
-			// Slot 2 (t0): 텍스처 테이블 바인딩
-			cmdList->SetGraphicsRootDescriptorTable(2, mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+			// SRV 힙의 시작 GPU 핸들 캐싱
+			CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuDescriptor(mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 
-			// 개별 물체 렌더링 루프 - 리스트(mAllRitems) 개수만큼 반복
+			// 개별 물체 렌더링 루프
 			for (size_t i = 0; i < mAllRitems.size(); ++i)
 			{
 				auto& ri = mAllRitems[i];
@@ -296,22 +315,25 @@ int DocentApp::Run()
 				InstanceData objData;
 				XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
 
-				// UV 자르기 정보 전달
 				objData.UVOffset = ri->UVOffset;
 				objData.UVScale = ri->UVScale;
 
-				// 현재 물체의 인덱스에 맞춰 메모리 오프셋 계산 (0번, 256번, 512번...)
 				UINT objOffset = ri->ObjCBIndex * instanceSize;
-
-				// 계산된 위치에 월드 행렬 복사
 				memcpy((BYTE*)mCBVoidPtr + objOffset, &objData, sizeof(InstanceData));
 
-				// Slot 0 (b0): 현재 물체의 상수 버퍼 바인딩
 				cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
 
+				// 서브메쉬 순회하며 개별 렌더링
 				for (const auto& submesh : ri->Submeshes)
 				{
-					// GPU에게 '몇 개'를 그릴지 '몇 번째 인덱스부터' 그릴지 정확히 지시
+					// MaterialIndex(0 또는 1)만큼 핸들 이동
+					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
+					texHandle.Offset(submesh.MaterialIndex, mCbvSrvUavDescriptorSize);
+
+					// 해당 서브메쉬용 텍스처 바인딩
+					cmdList->SetGraphicsRootDescriptorTable(2, texHandle);
+
+					// 그리기 명령
 					cmdList->DrawIndexedInstanced(submesh.IndexCount, 1, submesh.StartIndexLocation, 0, 0);
 				}
 			}

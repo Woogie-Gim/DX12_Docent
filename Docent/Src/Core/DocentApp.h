@@ -121,14 +121,18 @@ private:
 	UINT mIndexByteSize = 0;
 
 	// 카메라 행렬을 전달할 상수 버퍼 (매 프레임 갱신)
-	ComPtr<ID3D12Resource> mConstantBuffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mConstantBuffer;
 	void* mCBVoidPtr = nullptr; // 상수 버퍼 주소 포인터
 
 	// 큐브 데이터 생성 함수
 	bool BuildCubeGeometry();
 
-	// 텍스처 리소스 변수 추가
-	ComPtr<ID3D12Resource> mTexture;
+	// 텍스처 리소스
+	ComPtr<ID3D12Resource> mWoodTexture;
+	ComPtr<ID3D12Resource> mMemeTexture;
+
+	// SRV 핸들 오프셋 계산용 크기
+	UINT mCbvSrvUavDescriptorSize = 0;
 
 	// 화면에 그릴 모든 물체(RenderItem)들을 보관하는 리스트
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;

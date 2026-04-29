@@ -184,7 +184,7 @@ bool Device::CreateRtvAndDsvDescriptorHeaps()
 
     // SRV 힙 생성 (텍스처용)
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-    srvHeapDesc.NumDescriptors = 1;
+    srvHeapDesc.NumDescriptors = 10;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE; // 셰이더 접근 허용
     srvHeapDesc.NodeMask = 0;
