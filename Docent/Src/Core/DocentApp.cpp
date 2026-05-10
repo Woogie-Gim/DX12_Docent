@@ -41,7 +41,7 @@ bool DocentApp::Initialize()
 	// 카메라 렌즈(투영 행렬) 초기 세팅
 	float aspectRatio = static_cast<float>(mClientWidth) / mClientHeight;
 	mCamera.SetLens(0.25f * 3.1415926535f, aspectRatio, 1.0f, 1000.0f);
-	mCamera.SetPosition(0.0f, 2.0f, -5.0f); // 살짝 뒤쪽, 위쪽에 카메라 배치
+	mCamera.SetPosition(0.0f, 0.0f, -12.0f); // 카메라를 Z축 뒤쪽으로 빼서 넓은 갤러리 벽면이 보이게
 
 	// 큐브의 꼭짓점 데이터 (Geometry) 생성
 	if (!BuildCubeGeometry()) return false;
@@ -186,57 +186,46 @@ bool DocentApp::BuildCubeGeometry()
 
 	device->CreateShaderResourceView(mMemeTexture.Get(), &srvDesc, hDescriptor);
 
-	// 3*3 퍼즐 큐브 생성 로직
-	int rows = 3;
-	int cols = 3;
-
-	float cubeSpacing = 1.1f; // 큐브 사이의 간격 (1.0이면 딱 붙음)
-
-	// 전체 그림을 3등분 하므로, 스케일은 1/3 (0.333f)
-	float uvScaleU = 1.0f / cols;
-	float uvScaleV = 1.0f / rows;
+	// 가상 전시관 배치 로직
 
 	UINT cbIndex = 0; // 상수 버퍼 번호표
 
-	for (int y = 0; y < rows; ++y)
+	int galleryItemCount = 3;    // 전시할 온전한 작품의 개수
+	float gallerySpacing = 5.0f; // 작품과 작품 사이의 널찍한 간격
+
+	// 전시관 작품 개수만큼만 반복 (하나의 액자 = 하나의 RenderItem)
+	for (int i = 0; i < galleryItemCount; ++i)
 	{
-		for (int x = 0; x < cols; ++x)
-		{
-			auto cubeItem = std::make_unique<RenderItem>();
+		// 가운데 작품이 X=0, 왼쪽이 X=-5.0, 오른쪽이 X=5.0 위치에 걸리도록 계산
+		float galleryOffsetX = (i - 1) * gallerySpacing;
 
-			// 월드 행렬 세팅 (위치 잡기)
-			// 화면 중앙을 기준으로 3x3 격자 형태로 배치
-			float posX = (x - 1) * cubeSpacing;
-			float posY = -(y - 1) * cubeSpacing; // 3D Y축은 위가 양수이므로 반대로
+		auto cubeItem = std::make_unique<RenderItem>();
 
-			// 크기 조절
-			XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+		// 온전한 작품 배치 (크기, 위치)
+		float posX = galleryOffsetX;
+		float posY = 0.0f; // 모두 같은 높이에 전시
 
-			// 이동
-			XMMATRIX transMat = XMMatrixTranslation(posX, posY, 0.0f);
+		XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+		XMMATRIX transMat = XMMatrixTranslation(posX, posY, 0.0f);
+		XMMATRIX worldMat = scaleMat * transMat;
+		XMStoreFloat4x4(&cubeItem->World, worldMat);
 
-			// S * R * T 순서로 곱하기 (회전이 없으므로 S * T)
-			XMMATRIX worldMat = scaleMat * transMat;
-			XMStoreFloat4x4(&cubeItem->World, worldMat);
+		// 현재 위치를 원래 위치로 기억 (나중에 자석 로직 추가 시 사용)
+		cubeItem->OriginalPos = XMFLOAT3(posX, posY, 0.0f);
 
-			// 현재 위치를 원래 위치로 기억
-			cubeItem->OriginalPos = XMFLOAT3(posX, posY, 0.0f);
+		cubeItem->UVOffset = XMFLOAT2(0.0f, 1.0f);
+		cubeItem->UVScale = XMFLOAT2(1.0f, -1.0f);
 
-			// 이 큐브가 담당할 UV 자르기 영역 계산
-			cubeItem->UVOffset = XMFLOAT2(x * uvScaleU, y * uvScaleV);
-			cubeItem->UVScale = XMFLOAT2(uvScaleU, uvScaleV);
+		// 번호표 부여 및 리스트 추가
+		cubeItem->ObjCBIndex = cbIndex++;
 
-			// 번호표 부여 및 리스트 추가
-			cubeItem->ObjCBIndex = cbIndex++;
+		// 충돌 박스 설정 (온전한 액자 크기에 맞게 baseBox 실측값 사용)
+		baseBox.Transform(cubeItem->Bounds, worldMat);
 
-			// 원본 박스(baseBox)에 현재 액자의 크기/위치(worldMat)를 한 번만 적용
-			baseBox.Transform(cubeItem->Bounds, worldMat);
+		// 서브메쉬 정보 통째로 넘겨줌
+		cubeItem->Submeshes = submeshes;
 
-			// 쪼개진 서브메쉬 정보들을 통째로 넘겨줌
-			cubeItem->Submeshes = submeshes;
-
-			mAllRitems.push_back(std::move(cubeItem));
-		}
+		mAllRitems.push_back(std::move(cubeItem));
 	}
 
 	return true;
