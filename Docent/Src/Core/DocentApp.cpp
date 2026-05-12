@@ -2,11 +2,17 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include "../ImGui/imgui.h"
+#include "../ImGui/imgui_impl_win32.h"
+#include "../ImGui/imgui_impl_dx12.h"
 
 using namespace DirectX;
 
 // 전역 포인터 (WindwoProc에서 멤버 함수 호출용)
 DocentApp* gApp = nullptr;
+
+// ImGui 메시지 처리 함수 외부 선언
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT CALLBACK DocentApp::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -23,6 +29,9 @@ DocentApp::DocentApp(HINSTANCE hInstance) : mhAppInst(hInstance)
 // 소멸자
 DocentApp::~DocentApp()
 {
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
 }
 
 // 앱 초기화
@@ -45,6 +54,32 @@ bool DocentApp::Initialize()
 
 	// 큐브의 꼭짓점 데이터 (Geometry) 생성
 	if (!BuildCubeGeometry()) return false;
+
+	// ImGui 컨텍스트 생성 및 다크 모드 적용
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGui::StyleColorsDark();
+
+	// Win32 백엔드 초기화
+	ImGui_ImplWin32_Init(mhMainWnd);
+
+	// ImGui용 SRV 핸들 위치 계산 (2번 슬롯 배정)
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+
+	UINT incSize = mDevice->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	cpuHandle.Offset(2, incSize);
+	gpuHandle.Offset(2, incSize);
+
+	// DX12 백엔드 초기화
+	ImGui_ImplDX12_Init(mDevice->GetDevice(), 2,
+		DXGI_FORMAT_R8G8B8A8_UNORM, mDevice->GetSrvHeap(),
+		cpuHandle, gpuHandle);
+
+	// 폰트 아틀라스를 지금 즉시 만들어서 GPU 메모리에 올리기
+	ImGui::GetIO().Fonts->Build();
+	ImGui_ImplDX12_CreateDeviceObjects();
 
 	return true;
 }
@@ -271,6 +306,39 @@ int DocentApp::Run()
 			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
 			mDevice->BeginRender(clearColor);
 
+			// ImGui 프레임 시작
+			ImGui_ImplDX12_NewFrame();
+			ImGui_ImplWin32_NewFrame();
+			ImGui::NewFrame();
+
+			// UI 메뉴 구성
+			ImGui::Begin("Gallery Menu");
+			if (ImGui::CollapsingHeader("Artwork List", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				if (ImGui::Button("1. Left Artwork (X: -5)"))
+				{
+					mTargetCameraPos = XMFLOAT3(-5.0f, 0.0f, -5.0f);
+					mIsCameraMoving = true;
+				}
+				if (ImGui::Button("2. Center Artwork (X: 0)"))
+				{
+					mTargetCameraPos = XMFLOAT3(0.0f, 0.0f, -5.0f);
+					mIsCameraMoving = true;
+				}
+				if (ImGui::Button("3. Right Artwork (X: +5)"))
+				{
+					mTargetCameraPos = XMFLOAT3(5.0f, 0.0f, -5.0f);
+					mIsCameraMoving = true;
+				}
+				ImGui::Spacing();
+				if (ImGui::Button("View All Gallery"))
+				{
+					mTargetCameraPos = XMFLOAT3(0.0f, 0.0f, -12.0f);
+					mIsCameraMoving = true;
+				}
+			}
+			ImGui::End();
+
 			ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
 
 			// SRV 서술자 힙 활성화 및 파이프라인 세팅
@@ -327,6 +395,10 @@ int DocentApp::Run()
 				}
 			}
 
+			// ImGui 실제 렌더링 명령
+			ImGui::Render();
+			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList);
+
 			mDevice->EndRender();
 		}
 	}
@@ -336,13 +408,35 @@ int DocentApp::Run()
 
 void DocentApp::Update(const Timer& timer)
 {
-	// 초당 10.0 단위만큼 이동
 	float speed = 10.0f * timer.DeltaTime();
 
-	if (GetAsyncKeyState('W') & 0x8000) mCamera.Walk(speed);
-	if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
-	if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
-	if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
+	// 수동 이동 (자동 이동 중이 아닐 때만 작동하도록 수정)
+	if (!mIsCameraMoving)
+	{
+		if (GetAsyncKeyState('W') & 0x8000) mCamera.Walk(speed);
+		if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
+		if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
+		if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
+	}
+	// 자동 이동 (UI 버튼 클릭 시)
+	else
+	{
+		XMFLOAT3 camPos = mCamera.GetPosition3f();
+		XMVECTOR currentPos = XMLoadFloat3(&camPos);
+		XMVECTOR targetPos = XMLoadFloat3(&mTargetCameraPos);
+
+		// 선형 보간으로 부드러운 이동 계산
+		XMVECTOR newPos = XMVectorLerp(currentPos, targetPos, 5.0f * timer.DeltaTime());
+		mCamera.SetPosition(XMVectorGetX(newPos), XMVectorGetY(newPos), XMVectorGetZ(newPos));
+
+		// 목표 위치 도달 확인
+		float dist = XMVectorGetX(XMVector3Length(XMVectorSubtract(targetPos, currentPos)));
+		if (dist < 0.05f)
+		{
+			mCamera.SetPosition(mTargetCameraPos.x, mTargetCameraPos.y, mTargetCameraPos.z);
+			mIsCameraMoving = false;
+		}
+	}
 
 	mCamera.UpdateViewMatrix();
 }
@@ -350,6 +444,10 @@ void DocentApp::Update(const Timer& timer)
 // 메시지 처리
 LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	// ImGui 이벤트 가로채기
+	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+		return true;
+
 	switch (msg)
 	{
 	case WM_LBUTTONDOWN:

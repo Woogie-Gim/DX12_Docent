@@ -108,6 +108,8 @@ protected:
 
 	std::unique_ptr<Device> mDevice; // Device 객체 멤버 변수 선언
 	Camera mCamera; // 카메라 객체 선언
+	DirectX::XMFLOAT3 mTargetCameraPos = { 0.0f, 0.0f, -12.0f }; // 타겟 위치
+	bool mIsCameraMoving = false;                                // 이동 상태 플래그
 	Timer mTimer; // 타이머 객체
 	POINT mLastMousePos; // 마지막 마우스 위치 저장용
 

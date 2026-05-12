@@ -19,6 +19,9 @@
     <Filter Include="Resources">
       <UniqueIdentifier>{e88d9eef-59d1-451a-b3e5-528f8def48b2}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Src\ImGui">
+      <UniqueIdentifier>{d13a82a4-48a3-4fb4-ba28-57b552a4a201}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Src\Core\main.cpp">
@@ -35,6 +38,27 @@
     </ClCompile>
     <ClCompile Include="Src\Core\Timer.cpp">
       <Filter>Src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui.cpp">
+      <Filter>Src\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui_draw.cpp">
+      <Filter>Src\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui_impl_dx12.cpp">
+      <Filter>Src\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui_impl_win32.cpp">
+      <Filter>Src\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui_tables.cpp">
+      <Filter>Src\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui_widgets.cpp">
+      <Filter>Src\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\ImGui\imgui_demo.cpp">
+      <Filter>Src\ImGui</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -55,6 +79,30 @@
     </ClInclude>
     <ClInclude Include="Src\Graphics\Vertex.h">
       <Filter>Src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imconfig.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imgui.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imgui_impl_dx12.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imgui_impl_win32.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imgui_internal.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imstb_rectpack.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imstb_textedit.h">
+      <Filter>Src\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\ImGui\imstb_truetype.h">
+      <Filter>Src\ImGui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
