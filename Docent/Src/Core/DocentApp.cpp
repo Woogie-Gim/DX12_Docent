@@ -69,11 +69,11 @@ bool DocentApp::Initialize()
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 
 	UINT incSize = mDevice->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	cpuHandle.Offset(2, incSize);
-	gpuHandle.Offset(2, incSize);
+	cpuHandle.Offset(9, incSize);
+	gpuHandle.Offset(9, incSize);
 
 	// DX12 백엔드 초기화
-	ImGui_ImplDX12_Init(mDevice->GetDevice(), 2,
+	ImGui_ImplDX12_Init(mDevice->GetDevice(), 9,
 		DXGI_FORMAT_R8G8B8A8_UNORM, mDevice->GetSrvHeap(),
 		cpuHandle, gpuHandle);
 
@@ -123,31 +123,28 @@ bool DocentApp::InitMainWindow()
 
 bool DocentApp::BuildCubeGeometry()
 {
-	// 빈 바구니 준비
 	std::vector<Vertex> vertices;
-	std::vector<std::uint16_t> indices;
-	std::vector<SubmeshGeometry> submeshes;
+	std::vector<std::uint32_t> indices;
 
-	// Assimp 에게 바구니 주고 모델 데이터 담아오라 명령
-	std::string modelPath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\frame.obj";	
-	
-	if (!LoadModel(modelPath, vertices, indices, submeshes))
-	{
-		// 로드 실패 시 에러 메시지는 LoadModel 안에서 출력되므로 그냥 false 리턴
-		return false;
-	}
+	// 액자 데이터 로드
+	std::vector<SubmeshGeometry> frameSubmeshes;
+	std::string framePath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\frame.obj";
+	if (!LoadModel(framePath, vertices, indices, frameSubmeshes)) return false;
 
-	// 원본 정점 데이터 기반 기본 충돌 박스 생성
+	// 원본 정점 데이터 기반 기본 충돌 박스 생성 (액자 정점 개수만 사용)
 	DirectX::BoundingBox baseBox;
 	DirectX::BoundingBox::CreateFromPoints(baseBox, vertices.size(), &vertices[0].Pos, sizeof(Vertex));
 
-	// 바구니에 담긴 데이터의 총 바이트 크기 계산
+	// 갤러리 데이터 로드 (기존 vertices, indices 바구니에 이어서 누적됨)
+	std::vector<SubmeshGeometry> gallerySubmeshes;
+	std::string galleryPath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\art_gallery.obj";
+	if (!LoadModel(galleryPath, vertices, indices, gallerySubmeshes)) return false;
+
+	// 누적된 데이터의 총 바이트 크기 갱신
 	mVertexByteSize = (UINT)sizeof(Vertex) * (UINT)vertices.size();
-	mIndexByteSize = (UINT)sizeof(std::uint16_t) * (UINT)indices.size();
+	mIndexByteSize = (UINT)sizeof(std::uint32_t) * (UINT)indices.size();
 
 	ID3D12Device* device = mDevice->GetDevice();
-
-	// 업로드 힙 속성 정의 (이 변수를 정점, 인덱스, 상수 버퍼가 모두 재사용)
 	CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
 
 	CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(mVertexByteSize);
@@ -167,98 +164,143 @@ bool DocentApp::BuildCubeGeometry()
 	memcpy(mappedData, indices.data(), mIndexByteSize);
 	mIndexBuffer->Unmap(0, nullptr);
 
-	// 물체 1개당 크기를 256바이트로 정렬 (128비트 아키텍처 규칙)
+	// 상수 버퍼 메모리 할당
 	UINT instanceSize = (sizeof(InstanceData) + 255) & ~255;
 	UINT passSize = (sizeof(PassConstants) + 255) & ~255;
-
-	// 최대 100개의 물체를 그릴 수 있는 크기 + 공용 정보 1개 크기로 할당
 	UINT totalBufferSize = (instanceSize * 100) + passSize;
-
-	// cbDesc 변수를 여기서 새롭게 정의
 	CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBufferSize);
 
-	// GPU 메모리 할당 (위에서 만든 uploadHeap 재사용)
 	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mConstantBuffer));
-
-	// CPU 주소 매핑 (데이터를 쓸 수 있게 통로 개방)
 	mConstantBuffer->Map(0, nullptr, &mCBVoidPtr);
 
-	// SRV 증가 사이즈 캐싱
 	mCbvSrvUavDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// 텍스처 로드 및 SRV 뷰 생성
 	DirectX::ResourceUploadBatch upload(device);
 	upload.Begin();
 
-	// 두 개의 텍스처 경로 지정
 	std::wstring woodTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\wood.png";
 	std::wstring memeTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\meme.png";
-
 	DirectX::CreateWICTextureFromFile(device, upload, woodTexPath.c_str(), mWoodTexture.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, memeTexPath.c_str(), mMemeTexture.ReleaseAndGetAddressOf());
+
+	// 텍스처 파일 경로 추가
+	std::wstring detailsTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\details_baseColor.png";
+	std::wstring floorTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\floor_baseColor.png";
+	std::wstring statueTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\statue_baseColor.png";
+	std::wstring treeTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\tree_baseColor.png";
+	std::wstring wallsTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\walls_baseColor.png";
+
+	// GPU 로드
+	DirectX::CreateWICTextureFromFile(device, upload, detailsTexPath.c_str(), mDetailsTexture.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, floorTexPath.c_str(), mFloorTexture.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, statueTexPath.c_str(), mStatueTexture.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, treeTexPath.c_str(), mTreeTexture.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, wallsTexPath.c_str(), mWallsTexture.ReleaseAndGetAddressOf());
 
 	auto finish = upload.End(mDevice->GetCommandQueue());
 	finish.wait();
 
-	// SRV 서술자 힙의 첫 번째 핸들 가져오기
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
 
-	// 0번 슬롯: 나무 텍스처 SRV 생성
+	// 슬롯 0: 액자 예비용 텍스처
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = mWoodTexture->GetDesc().Format;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = mWoodTexture->GetDesc().MipLevels;
-
 	device->CreateShaderResourceView(mWoodTexture.Get(), &srvDesc, hDescriptor);
 
-	// 1번 슬롯: 밈 사진 텍스처 SRV 생성 (핸들을 1칸 이동)
+	// 슬롯 1: 액자 밈 텍스처
 	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
-
 	srvDesc.Format = mMemeTexture->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = mMemeTexture->GetDesc().MipLevels;
-
 	device->CreateShaderResourceView(mMemeTexture.Get(), &srvDesc, hDescriptor);
 
-	// 가상 전시관 배치 로직
+	// 슬롯 2: 액자 테두리 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mWoodTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mWoodTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mWoodTexture.Get(), &srvDesc, hDescriptor);
 
-	UINT cbIndex = 0; // 상수 버퍼 번호표
+	// 슬롯 3: 갤러리 예비용 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mWoodTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mWoodTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mWoodTexture.Get(), &srvDesc, hDescriptor);
 
-	int galleryItemCount = 3;    // 전시할 온전한 작품의 개수
-	float gallerySpacing = 5.0f; // 작품과 작품 사이의 널찍한 간격
+	// 슬롯 4: 갤러리 디테일 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mDetailsTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mDetailsTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mDetailsTexture.Get(), &srvDesc, hDescriptor);
 
-	// 전시관 작품 개수만큼만 반복 (하나의 액자 = 하나의 RenderItem)
+	// 슬롯 5: 갤러리 바닥 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mFloorTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mFloorTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mFloorTexture.Get(), &srvDesc, hDescriptor);
+
+	// 슬롯 6: 갤러리 동상 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mStatueTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mStatueTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mStatueTexture.Get(), &srvDesc, hDescriptor);
+
+	// 슬롯 7: 갤러리 나무 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mTreeTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mTreeTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mTreeTexture.Get(), &srvDesc, hDescriptor);
+
+	// 슬롯 8: 갤러리 벽면 텍스처
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	srvDesc.Format = mWallsTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mWallsTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mWallsTexture.Get(), &srvDesc, hDescriptor);
+
+	UINT cbIndex = 0;
+
+	// 갤러리 본체 렌더 아이템 생성 및 배치
+	auto galleryItem = std::make_unique<RenderItem>();
+	XMMATRIX gScale = XMMatrixScaling(1.0f, 1.0f, 1.0f); // 갤러리 크기 조절 필요시 변경
+	XMMATRIX gTrans = XMMatrixTranslation(0.0f, 0.0f, 0.0f);
+	XMStoreFloat4x4(&galleryItem->World, gScale * gTrans);
+
+	// 상수 버퍼 인덱스 할당
+	galleryItem->ObjCBIndex = cbIndex++;
+
+	galleryItem->SRVIndexOffset = 3; // 갤러리 텍스처는 3번 슬롯부터 시작
+	galleryItem->Submeshes = gallerySubmeshes; // 갤러리 전용 서브메쉬 할당
+	mAllRitems.push_back(std::move(galleryItem));
+
+	// 가상 전시관 액자 배치 로직
+	int galleryItemCount = 3;
+	float gallerySpacing = 5.0f;
+
 	for (int i = 0; i < galleryItemCount; ++i)
 	{
-		// 가운데 작품이 X=0, 왼쪽이 X=-5.0, 오른쪽이 X=5.0 위치에 걸리도록 계산
 		float galleryOffsetX = (i - 1) * gallerySpacing;
-
 		auto cubeItem = std::make_unique<RenderItem>();
 
-		// 온전한 작품 배치 (크기, 위치)
 		float posX = galleryOffsetX;
-		float posY = 0.0f; // 모두 같은 높이에 전시
+		float posY = 0.0f;
 
 		XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
 		XMMATRIX transMat = XMMatrixTranslation(posX, posY, 0.0f);
 		XMMATRIX worldMat = scaleMat * transMat;
 		XMStoreFloat4x4(&cubeItem->World, worldMat);
 
-		// 현재 위치를 원래 위치로 기억 (나중에 자석 로직 추가 시 사용)
 		cubeItem->OriginalPos = XMFLOAT3(posX, posY, 0.0f);
-
 		cubeItem->UVOffset = XMFLOAT2(0.0f, 1.0f);
 		cubeItem->UVScale = XMFLOAT2(1.0f, -1.0f);
+		cubeItem->SRVIndexOffset = 0;
 
-		// 번호표 부여 및 리스트 추가
 		cubeItem->ObjCBIndex = cbIndex++;
 
-		// 충돌 박스 설정 (온전한 액자 크기에 맞게 baseBox 실측값 사용)
 		baseBox.Transform(cubeItem->Bounds, worldMat);
-
-		// 서브메쉬 정보 통째로 넘겨줌
-		cubeItem->Submeshes = submeshes;
+		cubeItem->Submeshes = frameSubmeshes; // 액자 전용 서브메쉬 할당
 
 		mAllRitems.push_back(std::move(cubeItem));
 	}
@@ -350,7 +392,7 @@ int DocentApp::Run()
 			// 정점 및 인덱스 버퍼 바인딩
 			D3D12_VERTEX_BUFFER_VIEW vbv = { mVertexBuffer->GetGPUVirtualAddress(), mVertexByteSize, (UINT)sizeof(Vertex) };
 			cmdList->IASetVertexBuffers(0, 1, &vbv);
-			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), mIndexByteSize, DXGI_FORMAT_R16_UINT };
+			D3D12_INDEX_BUFFER_VIEW ibv = { mIndexBuffer->GetGPUVirtualAddress(), mIndexByteSize, DXGI_FORMAT_R32_UINT };
 			cmdList->IASetIndexBuffer(&ibv);
 			// GPU에게 점 3개씩 이어서 삼각형을 만들라고 지시
 			cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -385,7 +427,8 @@ int DocentApp::Run()
 				{
 					// MaterialIndex(0 또는 1)만큼 핸들 이동
 					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
-					texHandle.Offset(submesh.MaterialIndex, mCbvSrvUavDescriptorSize);
+					// 아이템의 시작 오프셋에 서브메쉬의 재질 번호를 더해 최종 텍스처 슬롯 결정
+					texHandle.Offset(ri->SRVIndexOffset + submesh.MaterialIndex, mCbvSrvUavDescriptorSize);
 
 					// 해당 서브메쉬용 텍스처 바인딩
 					cmdList->SetGraphicsRootDescriptorTable(2, texHandle);
@@ -600,7 +643,7 @@ void DocentApp::Pick(int sx, int sy)
 	}
 }
 
-bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes) 
+bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes) 
 {
 	Assimp::Importer importer;
 	// FBX는 단위가 제각각일 수 있어 GlobalScale 옵션을 고려할 수 있습니다.
@@ -616,7 +659,7 @@ bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vert
 }
 
 // 재귀적으로 노드를 방문하며 메쉬를 꺼내는 함수
-void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes)
+void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
 	// 현재 노드가 가진 모든 메쉬 처리
 	for (unsigned int i = 0; i < node->mNumMeshes; i++)
@@ -634,7 +677,7 @@ void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vert
 }
 
 // 실제 정점과 인덱스를 뽑아내는 함수
-void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes)
+void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
 	// 서브메쉬 정보 기록 시작
 	SubmeshGeometry submesh;

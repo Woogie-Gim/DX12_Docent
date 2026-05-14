@@ -75,6 +75,9 @@ struct RenderItem
 
 	// 이 물체가 가진 여러 개의 부분 메쉬 리스트
 	std::vector<SubmeshGeometry> Submeshes;
+
+	// 텍스처 슬롯 시작 인덱스
+	UINT SRVIndexOffset = 0;
 };
 
 class DocentApp
@@ -133,6 +136,13 @@ private:
 	ComPtr<ID3D12Resource> mWoodTexture;
 	ComPtr<ID3D12Resource> mMemeTexture;
 
+	// DocentApp 클래스 멤버 변수 추가
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDetailsTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mFloorTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsTexture;
+
 	// SRV 핸들 오프셋 계산용 크기
 	UINT mCbvSrvUavDescriptorSize = 0;
 
@@ -143,7 +153,7 @@ private:
 	RenderItem* mPickedItem = nullptr;	// 현재 마우스로 잡고 있는 큐브
 	void Pick(int sx, int sy);			// 광선을 쏴서 큐브를 찾는 함수
 
-	bool LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes);
-	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes);
-	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint16_t>& indices, std::vector<SubmeshGeometry>& submeshes);
+	bool LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
+	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
+	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
 };

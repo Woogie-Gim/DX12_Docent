@@ -1,0 +1,54 @@
+# Blender 5.1.1 MTL File: 'art_gallery.blend'
+# www.blender.org
+
+newmtl details
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd details_baseColor.png
+map_Ke details_emissive.png
+
+newmtl floor
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd floor_baseColor.png
+
+newmtl statue
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd statue_baseColor.png
+map_Bump -bm 1.000000 statue_normal.png
+
+newmtl tree
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.158940 0.158940 0.158940
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd tree_baseColor.png
+map_Bump -bm 1.000000 tree_normal.png
+
+newmtl walls
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.259262 0.259262 0.259262
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd walls_baseColor.png
+map_Ke walls_emissive.png
