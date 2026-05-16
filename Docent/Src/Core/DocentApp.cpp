@@ -50,10 +50,46 @@ bool DocentApp::Initialize()
 	// 카메라 렌즈(투영 행렬) 초기 세팅
 	float aspectRatio = static_cast<float>(mClientWidth) / mClientHeight;
 	mCamera.SetLens(0.25f * 3.1415926535f, aspectRatio, 1.0f, 1000.0f);
-	mCamera.SetPosition(0.0f, 0.0f, -12.0f); // 카메라를 Z축 뒤쪽으로 빼서 넓은 갤러리 벽면이 보이게
+	mCamera.SetPosition(3.0f, 1.5f, 0.0f);
+	mCamera.RotateY(DirectX::XMConvertToRadians(90.0f));
+	mCamera.UpdateViewMatrix();
 
 	// 큐브의 꼭짓점 데이터 (Geometry) 생성
 	if (!BuildCubeGeometry()) return false;
+
+	// 가상의 충돌 벽(Blocking Volumes) 세팅
+	mWallCollisions.clear();
+	DirectX::BoundingBox wall;
+
+	// 전시장 중앙 가벽
+	wall.Center = DirectX::XMFLOAT3(-0.7f, 2.0f, 0.0f);
+	wall.Extents = DirectX::XMFLOAT3(1.0f, 5.0f, 4.0f);
+	mWallCollisions.push_back(wall);
+
+	// 다비드상 주변 접근 금지 구역 (가벽 뒤쪽)
+	wall.Center = DirectX::XMFLOAT3(10.0f, 2.0f, 0.0f); // X축 안쪽으로 깊숙한 곳
+	wall.Extents = DirectX::XMFLOAT3(4.0f, 5.0f, 4.0f); // 다비드상 크기만큼 박스 생성
+	mWallCollisions.push_back(wall);
+
+	// 왼쪽 계단 추락 방지 유리벽
+	wall.Center = DirectX::XMFLOAT3(0.0f, 2.0f, -8.0f); // 카메라 기준 왼쪽(-Z 방향)
+	wall.Extents = DirectX::XMFLOAT3(15.0f, 5.0f, 1.0f); // 가로로 길고 얇은 벽
+	mWallCollisions.push_back(wall);
+
+	// 오른쪽 계단/나무 추락 방지 유리벽
+	wall.Center = DirectX::XMFLOAT3(0.0f, 2.0f, 8.0f);  // 카메라 기준 오른쪽(+Z 방향)
+	wall.Extents = DirectX::XMFLOAT3(15.0f, 5.0f, 1.0f);
+	mWallCollisions.push_back(wall);
+
+	// 다비드상 뒤쪽 완전 끝 벽 (정면 외벽)
+	wall.Center = DirectX::XMFLOAT3(18.0f, 2.0f, 0.0f); // X축 끝
+	wall.Extents = DirectX::XMFLOAT3(1.0f, 5.0f, 15.0f);
+	mWallCollisions.push_back(wall);
+
+	// 유저 등 뒤쪽 완전 끝 벽 (후면 외벽)
+	wall.Center = DirectX::XMFLOAT3(-10.0f, 2.0f, 0.0f); // -X축 끝
+	wall.Extents = DirectX::XMFLOAT3(1.0f, 5.0f, 15.0f);
+	mWallCollisions.push_back(wall);
 
 	// ImGui 컨텍스트 생성 및 다크 모드 적용
 	IMGUI_CHECKVERSION();
@@ -453,6 +489,9 @@ void DocentApp::Update(const Timer& timer)
 {
 	float speed = 10.0f * timer.DeltaTime();
 
+	// 이동 전 이전 카메라 위치 저장
+	DirectX::XMFLOAT3 prevPos = mCamera.GetPosition3f();
+
 	// 수동 이동 (자동 이동 중이 아닐 때만 작동하도록 수정)
 	if (!mIsCameraMoving)
 	{
@@ -460,6 +499,30 @@ void DocentApp::Update(const Timer& timer)
 		if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
 		if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
 		if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
+
+		// 이동 후 새로운 위치 측정
+		DirectX::XMFLOAT3 currPos = mCamera.GetPosition3f();
+
+		// 카메라를 보호하는 가상의 구 생성 (반지름 0.5f)
+		DirectX::BoundingSphere cameraSphere(currPos, 0.5f);
+		bool isColliding = false;
+
+		// 모든 가상 벽들을 순회하며 충돌 검사
+		for (const auto& wall : mWallCollisions)
+		{
+			// 카메라 구(Sphere)와 벽 박스(Box)가 겹쳤는지 확인
+			if (wall.Intersects(cameraSphere))
+			{
+				isColliding = true;
+				break;
+			}
+		}
+
+		// 벽에 부딪혔다면 이전 위치로 복구
+		if (isColliding)
+		{
+			mCamera.SetPosition(prevPos.x, prevPos.y, prevPos.z);
+		}
 	}
 	// 자동 이동 (UI 버튼 클릭 시)
 	else
@@ -480,6 +543,9 @@ void DocentApp::Update(const Timer& timer)
 			mIsCameraMoving = false;
 		}
 	}
+
+	DirectX::XMFLOAT3 finalPos = mCamera.GetPosition3f();
+	mCamera.SetPosition(finalPos.x, 1.5f, finalPos.z);
 
 	mCamera.UpdateViewMatrix();
 }

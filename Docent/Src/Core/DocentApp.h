@@ -156,4 +156,7 @@ private:
 	bool LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
 	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
 	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
+
+	// 여러 개의 가상 벽을 담을 리스트 추가
+	std::vector<DirectX::BoundingBox> mWallCollisions;
 };
