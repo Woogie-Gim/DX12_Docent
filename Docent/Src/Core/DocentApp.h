@@ -142,6 +142,10 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsTexture;
+	// 노멀 맵 리소스
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultNormal;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueNormal;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeNormal;
 
 	// SRV 핸들 오프셋 계산용 크기
 	UINT mCbvSrvUavDescriptorSize = 0;

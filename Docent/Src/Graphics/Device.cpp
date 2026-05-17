@@ -104,7 +104,7 @@ bool Device::CreateCubeRenderingPipeline()
 
     // t0 텍스처용 서술자 테이블 정의
     CD3DX12_DESCRIPTOR_RANGE texTable;
-    texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
     slotRootParameter[2].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
     // 정적 샘플러 정의 (s0)
@@ -136,7 +136,9 @@ bool Device::CreateCubeRenderingPipeline()
         // 법선 벡터 (위치 데이터 12바이트(float 3개) 뒤부터 시작)
         { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         // 텍스처 UV 데이터 (TEXCOORD, float 2개 포맷, 위치 12 + 법선 12 = 총 24 바이트 뒤부터 시작)
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        // 32바이트 위치(앞의 데이터 합: 12+12+8)부터 TANGENT 읽기
+        { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
     };
 
     // PSO (Pipeline State Object) 생성: 셰이더, 루트시그니처, 블렌드, 래스터라이저 상태 등을 한데 묶음
@@ -184,7 +186,7 @@ bool Device::CreateRtvAndDsvDescriptorHeaps()
 
     // SRV 힙 생성 (텍스처용)
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-    srvHeapDesc.NumDescriptors = 10;
+    srvHeapDesc.NumDescriptors = 30;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE; // 셰이더 접근 허용
     srvHeapDesc.NodeMask = 0;
