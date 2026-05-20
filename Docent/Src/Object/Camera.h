@@ -44,4 +44,7 @@ private:
 
     // 위치나 회전이 바뀌었는지 체크하는 플래그
     bool mViewDirty = true;
+
+    // 카메라의 현재 상하 회전(Pitch) 각도를 누적해서 기억하는 변수 (단위: 라디안)
+    float mPitch = 0.0f;
 };

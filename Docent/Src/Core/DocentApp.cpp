@@ -105,8 +105,8 @@ bool DocentApp::Initialize()
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 
 	UINT incSize = mDevice->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	cpuHandle.Offset(18, incSize);
-	gpuHandle.Offset(18, incSize);
+	cpuHandle.Offset(36, incSize);
+	gpuHandle.Offset(36, incSize);
 
 	// DX12 백엔드 초기화
 	ImGui_ImplDX12_Init(mDevice->GetDevice(), 3,
@@ -229,6 +229,14 @@ bool DocentApp::BuildCubeGeometry()
 	std::wstring defaultNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_normal.png";
 	std::wstring statueNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\statue_normal.png";
 	std::wstring treeNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\tree_normal.png";
+	std::wstring detailsMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\details_metallicRoughness.png";
+	std::wstring floorMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\floor_metallicRoughness.png";
+	std::wstring statueMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\statue_metallicRoughness.png";
+	std::wstring treeMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\tree_metallicRoughness.png";
+	std::wstring wallsMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\walls_metallicRoughness.png";
+	std::wstring defaultEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_emissive.png";
+	std::wstring detailsEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\details_emissive.png";
+	std::wstring wallsEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\walls_emissive.png";
 
 	// GPU 로드
 	DirectX::CreateWICTextureFromFile(device, upload, detailsTexPath.c_str(), mDetailsTexture.ReleaseAndGetAddressOf());
@@ -239,6 +247,14 @@ bool DocentApp::BuildCubeGeometry()
 	DirectX::CreateWICTextureFromFile(device, upload, defaultNormPath.c_str(), mDefaultNormal.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, statueNormPath.c_str(), mStatueNormal.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, treeNormPath.c_str(), mTreeNormal.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, detailsMRPath.c_str(), mDetailsMR.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, floorMRPath.c_str(), mFloorMR.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, statueMRPath.c_str(), mStatueMR.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, treeMRPath.c_str(), mTreeMR.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, wallsMRPath.c_str(), mWallsMR.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, defaultEmiPath.c_str(), mDefaultEmissive.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, detailsEmiPath.c_str(), mDetailsEmissive.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, wallsEmiPath.c_str(), mWallsEmissive.ReleaseAndGetAddressOf());
 
 	auto finish = upload.End(mDevice->GetCommandQueue());
 	finish.wait();
@@ -257,18 +273,20 @@ bool DocentApp::BuildCubeGeometry()
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 		};
 
-	// 액자 슬롯: 0 ~ 5번
-	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); // 0, 1: 예비 액자
-	CreateSRV(mMemeTexture);   CreateSRV(mDefaultNormal); // 2, 3: 밈 사진
-	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); // 4, 5: 액자 테두리
+	// 액자 슬롯: 0 ~ 11번, 3재질 * 4개 = 12개
+	// 액자 재질 4칸 세팅 (색상, 노멀, 거칠기, 발광)
+	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR); CreateSRV(mDefaultEmissive);
+	CreateSRV(mMemeTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR); CreateSRV(mDefaultEmissive);
+	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR); CreateSRV(mDefaultEmissive);
 
-	// 갤러리 슬롯: 6 ~ 17번
-	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); // 6, 7: 갤러리 예비
-	CreateSRV(mDetailsTexture); CreateSRV(mDefaultNormal); // 8, 9: 디테일
-	CreateSRV(mFloorTexture);  CreateSRV(mDefaultNormal); // 10, 11: 바닥
-	CreateSRV(mStatueTexture); CreateSRV(mStatueNormal);  // 12, 13: 동상 (노멀 맵 적용)
-	CreateSRV(mTreeTexture);   CreateSRV(mTreeNormal);    // 14, 15: 나무 (노멀 맵 적용)
-	CreateSRV(mWallsTexture);  CreateSRV(mDefaultNormal); // 16, 17: 벽면
+	// 갤러리 슬롯: 12 ~ 35번, 6재질 * 4개 = 24개
+	// 갤러리 재질 4칸 세팅 (디테일과 벽면만 진짜 Emissive 연결)
+	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR);  CreateSRV(mDefaultEmissive);
+	CreateSRV(mDetailsTexture); CreateSRV(mDefaultNormal); CreateSRV(mDetailsMR); CreateSRV(mDetailsEmissive);
+	CreateSRV(mFloorTexture);  CreateSRV(mDefaultNormal); CreateSRV(mFloorMR);   CreateSRV(mDefaultEmissive);
+	CreateSRV(mStatueTexture); CreateSRV(mStatueNormal);  CreateSRV(mStatueMR);  CreateSRV(mDefaultEmissive);
+	CreateSRV(mTreeTexture);   CreateSRV(mTreeNormal);    CreateSRV(mTreeMR);    CreateSRV(mDefaultEmissive);
+	CreateSRV(mWallsTexture);  CreateSRV(mDefaultNormal); CreateSRV(mWallsMR);  CreateSRV(mWallsEmissive);
 
 	UINT cbIndex = 0;
 
@@ -280,8 +298,8 @@ bool DocentApp::BuildCubeGeometry()
 
 	galleryItem->ObjCBIndex = cbIndex++;
 
-	// 갤러리 텍스처 시작점을 6번 슬롯으로
-	galleryItem->SRVIndexOffset = 6;
+	// 갤러리 텍스처 시작점을 12번 슬롯으로
+	galleryItem->SRVIndexOffset = 12;
 	galleryItem->Submeshes = gallerySubmeshes;
 	mAllRitems.push_back(std::move(galleryItem));
 
@@ -347,8 +365,8 @@ int DocentApp::Run()
 			XMStoreFloat4x4(&passConstants.ViewProj, XMMatrixTranspose(view * proj));
 
 			passConstants.CameraPos = mCamera.GetPosition3f();
-			passConstants.LightDir = XMFLOAT3(0.5f, -1.5f, 0.2f);
-			passConstants.LightColor = XMFLOAT3(1.0f, 1.0f, 1.0f);
+			passConstants.LightDir = XMFLOAT3(0.5f, -1.0f, -0.2f);
+			passConstants.LightColor = XMFLOAT3(1.0f, 0.95f, 0.88f);
 
 			// 공용 정보는 인스턴스 100개(instanceSize * 100) 뒤에 위치
 			UINT passOffset = instanceSize * 100;
@@ -438,7 +456,7 @@ int DocentApp::Run()
 					// MaterialIndex(0 또는 1)만큼 핸들 이동
 					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
 					// 아이템의 시작 오프셋에 서브메쉬의 재질 번호를 더해 최종 텍스처 슬롯 결정
-					texHandle.Offset(ri->SRVIndexOffset + (submesh.MaterialIndex * 2), mCbvSrvUavDescriptorSize);
+					texHandle.Offset(ri->SRVIndexOffset + (submesh.MaterialIndex * 4), mCbvSrvUavDescriptorSize);
 
 					// 해당 서브메쉬용 텍스처 바인딩
 					cmdList->SetGraphicsRootDescriptorTable(2, texHandle);

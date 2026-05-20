@@ -104,7 +104,7 @@ bool Device::CreateCubeRenderingPipeline()
 
     // t0 텍스처용 서술자 테이블 정의
     CD3DX12_DESCRIPTOR_RANGE texTable;
-    texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
+    texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
     slotRootParameter[2].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
     // 정적 샘플러 정의 (s0)
@@ -186,7 +186,7 @@ bool Device::CreateRtvAndDsvDescriptorHeaps()
 
     // SRV 힙 생성 (텍스처용)
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-    srvHeapDesc.NumDescriptors = 30;
+    srvHeapDesc.NumDescriptors = 50;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE; // 셰이더 접근 허용
     srvHeapDesc.NodeMask = 0;

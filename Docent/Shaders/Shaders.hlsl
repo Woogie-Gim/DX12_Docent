@@ -20,6 +20,8 @@ cbuffer cbPass : register(b1)
 
 Texture2D gDiffuseMap : register(t0);               // 실제 이미지 데이터
 Texture2D gNormalMap : register(t1);                // 노멀 맵 텍스처
+Texture2D gMetallicRoughnessMap : register(t2);     // 거칠기 맵 텍스처
+Texture2D gEmissiveMap : register(t3);              // 발광 맵 텍스처
 SamplerState gsamAnisotropicWrap : register(s0);    // 이미지를 어떻게 읽을지 결정하는 필터
 
 struct VertexIn
@@ -87,6 +89,17 @@ float4 PS(VertexOut pin) : SV_Target
     // 텍스처에서 기본 색상 가져오기
     float4 texColor = gDiffuseMap.Sample(gsamAnisotropicWrap, pin.TexC);
     
+    // 거칠기 텍스처 샘플링 (G채널 = Roughness)
+    float4 mrSample = gMetallicRoughnessMap.Sample(gsamAnisotropicWrap, pin.TexC);
+    float roughness = mrSample.g;
+    
+    // 빛과 상관없이 물체 스스로 내는 빛 색상 추출  
+    // 단일 채널(흑백) 로드 대비 임시 변수
+    float4 emiSample = gEmissiveMap.Sample(gsamAnisotropicWrap, pin.TexC);
+    
+    // R채널의 값을 G, B에도 똑같이 복사하여 무채색(하얀색) 발광으로 변환
+    float3 emissive = float3(emiSample.r, emiSample.r, emiSample.r);
+    
     // 벡터 정규화 (길이를 1로 맞춤) 및 노멀 매핑 적용
     float3 normal = normalize(pin.NormalW);
     float3 tangent = normalize(pin.TangentW);
@@ -95,10 +108,18 @@ float4 PS(VertexOut pin) : SV_Target
     
     // 노멀 맵에서 정보를 읽어와 표면의 미세 굴곡을 반영한 법선 벡터 계산
     float3 normalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, pin.TexC).rgb;
+    
+    // 파란색(B) 채널이 0.9보다 크면 평면(default_normal)으로 간주
+    if (normalMapSample.b > 0.9f)
+    {
+        roughness = 1.0f; // 거칠기를 최대치(1.0)로 강제 고정하여 빛 반사를 완전히 흩어버림
+        texColor.rgb *= 0.8f; // 벽면이 너무 밝게 뜨지 않도록 기본 색상을 살짝 한 톤 다운
+    }
+    
     normal = NormalSampleToWorldSpace(normalMapSample, normal, tangent);
     
     // Ambient (환경광): 빛이 직접 닿지 않아도 아주 캄캄하지 않게 기본적으로 깔아주는 빛
-    float3 ambient = texColor.rgb * 0.5f;
+    float3 ambient = texColor.rgb * 0.3f;
     
     // Diffuse (난반사광): 빛을 정면으로 받을수록 밝아짐 (내적 활용)
     float diffuseFactor = max(dot(normal, lightDir), 0.0f);
@@ -106,11 +127,16 @@ float4 PS(VertexOut pin) : SV_Target
     
     // Specular (정반사광/하이라이트): 매끈한 표면에서 빛이 반사되어 눈으로 들어오는 빛
     float3 reflectDir = reflect(-lightDir, normal);
-    float specFactor = pow(max(dot(viewDir, reflectDir), 0.0f), 32.0f); // 32는 광택의 정도
-    float3 specular = specFactor * gLightColor * 0.5f; // 하이라이트 강도 조절
+    
+    // 거칠기가 낮을수록(0에 가까울수록) 지수가 커져서 날카롭고 강한 하이라이트 형성
+    float specPower = max(1.0f, (1.0f - roughness) * 128.0f);
+    float specFactor = pow(max(dot(viewDir, reflectDir), 0.0f), specPower);
+    
+    // 금속성이나 재질에 맞게 하이라이트 세기 조절
+    float3 specular = specFactor * gLightColor * (1.0f - roughness) * 0.5f;
     
     // 최종 색상 = 환경광 + 난반사광 + 정반사광
-    float3 finalColor = ambient + diffuse + specular;
+    float3 finalColor = ambient + diffuse + specular + emissive;
     
     return float4(finalColor, texColor.a);
 }

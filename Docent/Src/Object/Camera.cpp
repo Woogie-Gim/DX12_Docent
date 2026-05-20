@@ -48,6 +48,17 @@ void Camera::Strafe(float d)
 // 상하 회전 (X축 기준)
 void Camera::Pitch(float angle)
 {
+    // 새로운 각도를 더해보고 제한선을 넘으면 회전을 취소
+    // 1.55f 라디안은 약 88.8도 (90도가 되기 직전에 막아버림)
+    float newPitch = mPitch + angle;
+    if (newPitch > 1.55f || newPitch < -1.55f)
+    {
+        return; // 각도 제한을 넘었으므로 아무 회전도 하지 않고 함수 종료
+    }
+
+    // 제한을 넘지 않았다면 실제 누적 각도를 업데이트
+    mPitch = newPitch;
+
     XMMATRIX R = XMMatrixRotationAxis(XMLoadFloat3(&mRight), angle);
     XMStoreFloat3(&mUp, XMVector3TransformNormal(XMLoadFloat3(&mUp), R));
     XMStoreFloat3(&mLook, XMVector3TransformNormal(XMLoadFloat3(&mLook), R));

@@ -146,6 +146,16 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultNormal;
 	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueNormal;
 	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeNormal;
+	// MetallicRougness 리소스
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDetailsMR;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mFloorMR;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueMR;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeMR;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsMR;
+	// Emissive 리소스
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultEmissive;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDetailsEmissive;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsEmissive;
 
 	// SRV 핸들 오프셋 계산용 크기
 	UINT mCbvSrvUavDescriptorSize = 0;
