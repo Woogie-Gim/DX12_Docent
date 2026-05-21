@@ -365,8 +365,18 @@ int DocentApp::Run()
 			XMStoreFloat4x4(&passConstants.ViewProj, XMMatrixTranspose(view * proj));
 
 			passConstants.CameraPos = mCamera.GetPosition3f();
-			passConstants.LightDir = XMFLOAT3(0.5f, -1.0f, -0.2f);
-			passConstants.LightColor = XMFLOAT3(1.0f, 0.95f, 0.88f);
+
+			// 스포트라이트 핀조명 세팅
+			// 다비드상 위치 근처 천장에 조명을 배치
+			passConstants.SpotLightPos = XMFLOAT3(0.0f, 15.0f, 0.0f);
+			passConstants.SpotLightRange = 100.0f; // 빛이 전시관 전체로 퍼지지 않고 다비드상 주변만 맴돌게
+
+			// 천장에서 바닥(아래 방향)을 향해 비스듬히 다비드상을 비추도록 방향 벡터 세팅
+			passConstants.SpotLightDir = XMFLOAT3(0.0f, -1.0f, 0.0f);
+			passConstants.SpotLightSpotPower = 0.5f; // 숫자가 클수록 원뿔 중심부가 진하고 경계면이 부드러워짐
+
+			// 은은하고 고급스러운 갤러리 특유의 아이보리 조명 색상
+			passConstants.SpotLightColor = XMFLOAT3(1.0f, 0.95f, 0.85f);
 
 			// 공용 정보는 인스턴스 100개(instanceSize * 100) 뒤에 위치
 			UINT passOffset = instanceSize * 100;

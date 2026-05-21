@@ -12,10 +12,15 @@ cbuffer cbPass : register(b1)
     float4x4 gViewProj;
     float3 gCameraPos;
     float pad1;
-    float3 gLightDir;
+    
+    float3 gSpotLightPos; // 스포트라이트 위치 (X, Y, Z)
+    float gSpotLightRange; // 빛이 도달하는 최대 거리 (기본값 추천: 15.0f)
+    
+    float3 gSpotLightDir; // 빛이 향하는 방향 벡터
+    float gSpotLightSpotPower; // 원뿔 경계면의 부드러운 감쇄 강도 (기본값 추천: 64.0f)
+    
+    float3 gSpotLightColor; // 조명 색상 (R, G, B)
     float pad2;
-    float3 gLightColor;
-    float pad3;
 };
 
 Texture2D gDiffuseMap : register(t0);               // 실제 이미지 데이터
@@ -100,42 +105,58 @@ float4 PS(VertexOut pin) : SV_Target
     // R채널의 값을 G, B에도 똑같이 복사하여 무채색(하얀색) 발광으로 변환
     float3 emissive = float3(emiSample.r, emiSample.r, emiSample.r);
     
-    // 벡터 정규화 (길이를 1로 맞춤) 및 노멀 매핑 적용
-    float3 normal = normalize(pin.NormalW);
-    float3 tangent = normalize(pin.TangentW);
-    float3 lightDir = normalize(-gLightDir); // 빛이 '날아가는' 방향의 반대(광원을 향하는 방향)
-    float3 viewDir = normalize(gCameraPos - pin.PosW);
-    
     // 노멀 맵에서 정보를 읽어와 표면의 미세 굴곡을 반영한 법선 벡터 계산
     float3 normalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, pin.TexC).rgb;
     
-    // 파란색(B) 채널이 0.9보다 크면 평면(default_normal)으로 간주
-    if (normalMapSample.b > 0.9f)
+    if (normalMapSample.b > 0.8f && normalMapSample.r > 0.3f && normalMapSample.g > 0.3f)
     {
         roughness = 1.0f; // 거칠기를 최대치(1.0)로 강제 고정하여 빛 반사를 완전히 흩어버림
         texColor.rgb *= 0.8f; // 벽면이 너무 밝게 뜨지 않도록 기본 색상을 살짝 한 톤 다운
     }
     
-    normal = NormalSampleToWorldSpace(normalMapSample, normal, tangent);
-    
-    // Ambient (환경광): 빛이 직접 닿지 않아도 아주 캄캄하지 않게 기본적으로 깔아주는 빛
+    // Ambient (환경광): 조명이 닿지 않는 외곽 지역의 최소 시야 보장
     float3 ambient = texColor.rgb * 0.3f;
     
-    // Diffuse (난반사광): 빛을 정면으로 받을수록 밝아짐 (내적 활용)
-    float diffuseFactor = max(dot(normal, lightDir), 0.0f);
-    float3 diffuse = diffuseFactor * texColor.rgb * gLightColor;
+    // 벡터 정규화 (길이를 1로 맞춤) 및 노멀 매핑 적용
+    float3 normal = normalize(pin.NormalW);
+    float3 tangent = normalize(pin.TangentW);
     
-    // Specular (정반사광/하이라이트): 매끈한 표면에서 빛이 반사되어 눈으로 들어오는 빛
-    float3 reflectDir = reflect(-lightDir, normal);
+    normal = NormalSampleToWorldSpace(normalMapSample, normal, tangent);
     
-    // 거칠기가 낮을수록(0에 가까울수록) 지수가 커져서 날카롭고 강한 하이라이트 형성
+    // 고정된 태양빛 대신 광원의 위치에서 현재 픽셀 위치를 향하는 빛의 방향 벡터 계산
+    float3 lightVec = gSpotLightPos - pin.PosW;
+    float d = length(lightVec); // 광원과 표면 사이의 실제 거리
+    
+    // 빛의 도달 범위를 벗어나면 완전히 어둡게 처리
+    if (d > gSpotLightRange)
+        return float4(ambient + emissive, texColor.a);
+    
+    lightVec /= d; // lightVec 정규화
+    float3 viewDir = normalize(gCameraPos - pin.PosW);
+    
+    // 거리 감쇄 (Attenuation) 계산: 거리가 멀어질수록 빛이 부드럽게 감소
+    float att = max(0.0f, 1.0f - (d / gSpotLightRange));
+    
+    // 원뿔 각도 (Spotlight Cone) 계산
+    // 조명이 바라보는 방향(gSpotLightDir)과 픽셀로 향하는 방향(-lightVec)의 내적
+    float spotFactor = max(dot(-lightVec, normalize(gSpotLightDir)), 0.0f);
+    // 지정된 SpotPower 제곱승을 통해 원뿔 형태의 선명한 빛 테두리 형성
+    float spotCone = pow(spotFactor, gSpotLightSpotPower);
+    
+    // 최종 조명 결합 계수 (거리 감쇄 * 원뿔 필터)
+    float lightIntensity = att * spotCone;
+    
+    // Diffuse (난반사광) 연산
+    float diffuseFactor = max(dot(normal, lightVec), 0.0f);
+    float3 diffuse = diffuseFactor * texColor.rgb * gSpotLightColor * lightIntensity;
+    
+    // Specular (정반사광) 연산
+    float3 reflectDir = reflect(-lightVec, normal);
     float specPower = max(1.0f, (1.0f - roughness) * 128.0f);
     float specFactor = pow(max(dot(viewDir, reflectDir), 0.0f), specPower);
+    float3 specular = specFactor * gSpotLightColor * (1.0f - roughness) * 0.5f * lightIntensity;
     
-    // 금속성이나 재질에 맞게 하이라이트 세기 조절
-    float3 specular = specFactor * gLightColor * (1.0f - roughness) * 0.5f;
-    
-    // 최종 색상 = 환경광 + 난반사광 + 정반사광
+    // 최종 색상 합산 (환경광 + 난반사광 + 정반사광 + 자체 발광)
     float3 finalColor = ambient + diffuse + specular + emissive;
     
     return float4(finalColor, texColor.a);
