@@ -34,15 +34,11 @@ struct PassConstants
 	DirectX::XMFLOAT3 CameraPos;            // 카메라 위치
 	float pad1;                             // 메모리 정렬용 패딩
 
-	//스포트라이트 구조체 데이터 확장
-	DirectX::XMFLOAT3 SpotLightPos;
-	float SpotLightRange;
-
-	DirectX::XMFLOAT3 SpotLightDir;
-	float SpotLightSpotPower;
-
-	DirectX::XMFLOAT3 SpotLightColor;
+	// 태양빛 방향과 색상
+	DirectX::XMFLOAT3 LightDir;
 	float pad2;
+	DirectX::XMFLOAT3 LightColor;
+	float pad3;
 };
 
 // 부분 메쉬(Submesh) 정보를 담는 구조체

@@ -1,4 +1,4 @@
-// ·¹Áö½ºÅÍ b0 : °³º° ¹°Ã¼ Á¤º¸
+// ë ˆì§€ìŠ¤í„° b0 : ê°œë³„ ë¬¼ì²´ ì •ë³´
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
@@ -6,158 +6,136 @@ cbuffer cbPerObject : register(b0)
     float2 gUVScale;
 };
 
-// ·¹Áö½ºÅÍ b1 : È­¸é °ø¿ë Á¤º¸ (PassConstants)
+// ë ˆì§€ìŠ¤í„° b1 : í™”ë©´ ê³µìš© ì •ë³´ (PassConstants)
 cbuffer cbPass : register(b1)
 {
     float4x4 gViewProj;
     float3 gCameraPos;
     float pad1;
     
-    float3 gSpotLightPos; // ½ºÆ÷Æ®¶óÀÌÆ® À§Ä¡ (X, Y, Z)
-    float gSpotLightRange; // ºûÀÌ µµ´ŞÇÏ´Â ÃÖ´ë °Å¸® (±âº»°ª ÃßÃµ: 15.0f)
-    
-    float3 gSpotLightDir; // ºûÀÌ ÇâÇÏ´Â ¹æÇâ º¤ÅÍ
-    float gSpotLightSpotPower; // ¿ø»Ô °æ°è¸éÀÇ ºÎµå·¯¿î °¨¼â °­µµ (±âº»°ª ÃßÃµ: 64.0f)
-    
-    float3 gSpotLightColor; // Á¶¸í »ö»ó (R, G, B)
+    // íƒœì–‘ë¹› ì •ë³´
+    float3 gLightDir;
     float pad2;
+    float3 gLightColor;
+    float pad3;
 };
 
-Texture2D gDiffuseMap : register(t0);               // ½ÇÁ¦ ÀÌ¹ÌÁö µ¥ÀÌÅÍ
-Texture2D gNormalMap : register(t1);                // ³ë¸Ö ¸Ê ÅØ½ºÃ³
-Texture2D gMetallicRoughnessMap : register(t2);     // °ÅÄ¥±â ¸Ê ÅØ½ºÃ³
-Texture2D gEmissiveMap : register(t3);              // ¹ß±¤ ¸Ê ÅØ½ºÃ³
-SamplerState gsamAnisotropicWrap : register(s0);    // ÀÌ¹ÌÁö¸¦ ¾î¶»°Ô ÀĞÀ»Áö °áÁ¤ÇÏ´Â ÇÊÅÍ
+Texture2D gDiffuseMap : register(t0); // ì‹¤ì œ ì´ë¯¸ì§€ ë°ì´í„°
+Texture2D gNormalMap : register(t1); // ë…¸ë©€ ë§µ í…ìŠ¤ì²˜
+Texture2D gMetallicRoughnessMap : register(t2); // ê±°ì¹ ê¸° ë§µ í…ìŠ¤ì²˜
+Texture2D gEmissiveMap : register(t3); // ë°œê´‘ ë§µ í…ìŠ¤ì²˜
+SamplerState gsamAnisotropicWrap : register(s0); // ì´ë¯¸ì§€ë¥¼ ì–´ë–»ê²Œ ì½ì„ì§€ ê²°ì •í•˜ëŠ” í•„í„°
 
 struct VertexIn
 {
-    float3 PosL  : POSITION;    // ÀÔ·Â À§Ä¡ (X, Y, Z)
-    float3 NormalL : NORMAL;    // ÀÔ·Â ¹ı¼±
-    float2 TexC : TEXCOORD;     // ÀÔ·Â UV
-    float3 TangentL : TANGENT;  // ÀÔ·Â Á¢¼±  
+    float3 PosL : POSITION; // ì…ë ¥ ìœ„ì¹˜ (X, Y, Z)
+    float3 NormalL : NORMAL; // ì…ë ¥ ë²•ì„ 
+    float2 TexC : TEXCOORD; // ì…ë ¥ UV
+    float3 TangentL : TANGENT; // ì…ë ¥ ì ‘ì„   
 };
 
 struct VertexOut
 {
-    float4 PosH  : SV_POSITION;     // Ãâ·Â À§Ä¡ (½Ã½ºÅÛ º¯¼ö, È­¸é ÁÂÇ¥)
-    float3 PosW : POSITION;         // ¿ùµå °ø°£¿¡¼­ÀÇ ÇÈ¼¿ À§Ä¡
-    float3 NormalW : NORMAL;        // ¿ùµå °ø°£¿¡¼­ÀÇ ¹ı¼± º¤ÅÍ
+    float4 PosH : SV_POSITION; // ì¶œë ¥ ìœ„ì¹˜ (ì‹œìŠ¤í…œ ë³€ìˆ˜, í™”ë©´ ì¢Œí‘œ)
+    float3 PosW : POSITION; // ì›”ë“œ ê³µê°„ì—ì„œì˜ í”½ì…€ ìœ„ì¹˜
+    float3 NormalW : NORMAL; // ì›”ë“œ ê³µê°„ì—ì„œì˜ ë²•ì„  ë²¡í„°
     float2 TexC : TEXCOORD;
-    float3 TangentW : TANGENT;      // ¿ùµå °ø°£ Á¢¼±
+    float3 TangentW : TANGENT; // ì›”ë“œ ê³µê°„ ì ‘ì„ 
 };
 
-// Á¤Á¡ ¼ÎÀÌ´õ : ²ÀÁşÁ¡ ÁÂÇ¥¸¦ MVP Çà·Ä°ú °öÇØ È­¸é ÁÂÇ¥·Î ÀüÈ¯
+// ì •ì  ì…°ì´ë” : ê¼­ì§“ì  ì¢Œí‘œë¥¼ MVP í–‰ë ¬ê³¼ ê³±í•´ í™”ë©´ ì¢Œí‘œë¡œ ì „í™˜
 VertexOut VS(VertexIn vin)
 {
     VertexOut vout;
     
-    // ¿ùµå º¯È¯ (¹°Ã¼¸¦ 3D °ø°£¿¡ ¹èÄ¡)
+    // ì›”ë“œ ë³€í™˜ (ë¬¼ì²´ë¥¼ 3D ê³µê°„ì— ë°°ì¹˜)
     float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
     vout.PosW = posW.xyz;
     
-    // ºä & Åõ¿µ º¯È¯ (Ä«¸Ş¶ó ·»Áî¸¦ ÅëÇØ È­¸é ÁÂÇ¥·Î º¯È¯)
+    // ë·° & íˆ¬ì˜ ë³€í™˜ (ì¹´ë©”ë¼ ë Œì¦ˆë¥¼ í†µí•´ í™”ë©´ ì¢Œí‘œë¡œ ë³€í™˜)
     vout.PosH = mul(posW, gViewProj);
     
-    // ¹ı¼± º¤ÅÍ ¹× Á¢¼± º¤ÅÍ È¸Àü
+    // ë²•ì„  ë²¡í„° ë° ì ‘ì„  ë²¡í„° íšŒì „
     vout.NormalW = mul(vin.NormalL, (float3x3) gWorld);
     vout.TangentW = mul(vin.TangentL, (float3x3) gWorld);
     
-    // ¿øº» UV ÁÂÇ¥¿¡ ½ºÄÉÀÏÀ» °öÇÏ°í ¿ÀÇÁ¼ÂÀ» ´õÇÔ
+    // ì›ë³¸ UV ì¢Œí‘œì— ìŠ¤ì¼€ì¼ì„ ê³±í•˜ê³  ì˜¤í”„ì…‹ì„ ë”í•¨
     vout.TexC = (vin.TexC * gUVScale) + gUVOffset;
     
     return vout;
 }
 
-// ³ë¸Ö ¸ÅÇÎ ÇÔ¼ö - ³ë¸Ö ¸Ê Á¤º¸¸¦ ¿ùµå °ø°£ ¹ı¼±À¸·Î º¯È¯
+// ë…¸ë©€ ë§¤í•‘ í•¨ìˆ˜ - ë…¸ë©€ ë§µ ì •ë³´ë¥¼ ì›”ë“œ ê³µê°„ ë²•ì„ ìœ¼ë¡œ ë³€í™˜
 float3 NormalSampleToWorldSpace(float3 normalSample, float3 unitNormalW, float3 unitTangentW)
 {
-    // ³ë¸Ö ¸ÊÀÇ »ö»ó(0~1)À» º¤ÅÍ(-1~1)·Î º¯È¯
+    // ë…¸ë©€ ë§µì˜ ìƒ‰ìƒ(0~1)ì„ ë²¡í„°(-1~1)ë¡œ ë³€í™˜
     float3 normalT = 2.0f * normalSample - 1.0f;
 
-    // ±×¶÷-½´¹ÌÆ® Á÷±³È­¸¦ ÀÌ¿ëÇØ ¿Ïº®ÇÑ Á÷±³ ±âÀú(TBN Çà·Ä) ±¸Ãà
+    // ê·¸ëŒ-ìŠˆë¯¸íŠ¸ ì§êµí™”ë¥¼ ì´ìš©í•´ ì™„ë²½í•œ ì§êµ ê¸°ì €(TBN í–‰ë ¬) êµ¬ì¶•
     float3 N = unitNormalW;
     float3 T = normalize(unitTangentW - dot(unitTangentW, N) * N);
-    float3 B = cross(N, T); // ºÎ¹ı¼± º¤ÅÍ °è»ê
+    float3 B = cross(N, T); // ë¶€ë²•ì„  ë²¡í„° ê³„ì‚°
 
-    // TBN Çà·Ä »ı¼º (Á¢¼± °ø°£ > ¿ùµå °ø°£ º¯È¯ Çà·Ä)
+    // TBN í–‰ë ¬ ìƒì„± (ì ‘ì„  ê³µê°„ > ì›”ë“œ ê³µê°„ ë³€í™˜ í–‰ë ¬)
     float3x3 TBN = float3x3(T, B, N);
 
-    // ³ë¸Ö ¸Ê º¤ÅÍ¸¦ ¿ùµå °ø°£À¸·Î º¯È¯
+    // ë…¸ë©€ ë§µ ë²¡í„°ë¥¼ ì›”ë“œ ê³µê°„ìœ¼ë¡œ ë³€í™˜
     float3 bumpedNormalW = mul(normalT, TBN);
 
     return bumpedNormalW;
 }
 
-// ÇÈ¼¿ ¼ÎÀÌ´õ : ²ÀÁşÁ¡ »çÀÌÀÇ ÇÈ¼¿¿¡ »öÀ» Ä¥ÇÔ
+// í”½ì…€ ì…°ì´ë” : ê¼­ì§“ì  ì‚¬ì´ì˜ í”½ì…€ì— ìƒ‰ì„ ì¹ í•¨
 float4 PS(VertexOut pin) : SV_Target
 {
-    // ÅØ½ºÃ³¿¡¼­ ±âº» »ö»ó °¡Á®¿À±â
+    // í…ìŠ¤ì²˜ì—ì„œ ê¸°ë³¸ ìƒ‰ìƒ ê°€ì ¸ì˜¤ê¸°
     float4 texColor = gDiffuseMap.Sample(gsamAnisotropicWrap, pin.TexC);
     
-    // °ÅÄ¥±â ÅØ½ºÃ³ »ùÇÃ¸µ (GÃ¤³Î = Roughness)
+    // ê±°ì¹ ê¸° í…ìŠ¤ì²˜ ìƒ˜í”Œë§ (Gì±„ë„ = Roughness)
     float4 mrSample = gMetallicRoughnessMap.Sample(gsamAnisotropicWrap, pin.TexC);
     float roughness = mrSample.g;
     
-    // ºû°ú »ó°ü¾øÀÌ ¹°Ã¼ ½º½º·Î ³»´Â ºû »ö»ó ÃßÃâ  
-    // ´ÜÀÏ Ã¤³Î(Èæ¹é) ·Îµå ´ëºñ ÀÓ½Ã º¯¼ö
+    // ë¹›ê³¼ ìƒê´€ì—†ì´ ë¬¼ì²´ ìŠ¤ìŠ¤ë¡œ ë‚´ëŠ” ë¹› ìƒ‰ìƒ ì¶”ì¶œ  
+    // ë‹¨ì¼ ì±„ë„(í‘ë°±) ë¡œë“œ ëŒ€ë¹„ ì„ì‹œ ë³€ìˆ˜
     float4 emiSample = gEmissiveMap.Sample(gsamAnisotropicWrap, pin.TexC);
     
-    // RÃ¤³ÎÀÇ °ªÀ» G, B¿¡µµ ¶È°°ÀÌ º¹»çÇÏ¿© ¹«Ã¤»ö(ÇÏ¾á»ö) ¹ß±¤À¸·Î º¯È¯
+    // Rì±„ë„ì˜ ê°’ì„ G, Bì—ë„ ë˜‘ê°™ì´ ë³µì‚¬í•˜ì—¬ ë¬´ì±„ìƒ‰(í•˜ì–€ìƒ‰) ë°œê´‘ìœ¼ë¡œ ë³€í™˜
     float3 emissive = float3(emiSample.r, emiSample.r, emiSample.r);
     
-    // ³ë¸Ö ¸Ê¿¡¼­ Á¤º¸¸¦ ÀĞ¾î¿Í Ç¥¸éÀÇ ¹Ì¼¼ ±¼°îÀ» ¹İ¿µÇÑ ¹ı¼± º¤ÅÍ °è»ê
+    // ë…¸ë©€ ë§µì—ì„œ ì •ë³´ë¥¼ ì½ì–´ì™€ í‘œë©´ì˜ ë¯¸ì„¸ êµ´ê³¡ì„ ë°˜ì˜í•œ ë²•ì„  ë²¡í„° ê³„ì‚°
     float3 normalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, pin.TexC).rgb;
     
     if (normalMapSample.b > 0.8f && normalMapSample.r > 0.3f && normalMapSample.g > 0.3f)
     {
-        roughness = 1.0f; // °ÅÄ¥±â¸¦ ÃÖ´ëÄ¡(1.0)·Î °­Á¦ °íÁ¤ÇÏ¿© ºû ¹İ»ç¸¦ ¿ÏÀüÈ÷ Èğ¾î¹ö¸²
-        texColor.rgb *= 0.8f; // º®¸éÀÌ ³Ê¹« ¹à°Ô ¶ßÁö ¾Êµµ·Ï ±âº» »ö»óÀ» »ìÂ¦ ÇÑ Åæ ´Ù¿î
+        roughness = 1.0f; // ê±°ì¹ ê¸°ë¥¼ ìµœëŒ€ì¹˜(1.0)ë¡œ ê°•ì œ ê³ ì •í•˜ì—¬ ë¹› ë°˜ì‚¬ë¥¼ ì™„ì „íˆ í©ì–´ë²„ë¦¼
+        texColor.rgb *= 0.8f; // ë²½ë©´ì´ ë„ˆë¬´ ë°ê²Œ ëœ¨ì§€ ì•Šë„ë¡ ê¸°ë³¸ ìƒ‰ìƒì„ ì‚´ì§ í•œ í†¤ ë‹¤ìš´
     }
     
-    // Ambient (È¯°æ±¤): Á¶¸íÀÌ ´êÁö ¾Ê´Â ¿Ü°û Áö¿ªÀÇ ÃÖ¼Ò ½Ã¾ß º¸Àå
+    // Ambient (í™˜ê²½ê´‘): ì¡°ëª…ì´ ë‹¿ì§€ ì•ŠëŠ” ì™¸ê³½ ì§€ì—­ì˜ ìµœì†Œ ì‹œì•¼ ë³´ì¥
     float3 ambient = texColor.rgb * 0.3f;
     
-    // º¤ÅÍ Á¤±ÔÈ­ (±æÀÌ¸¦ 1·Î ¸ÂÃã) ¹× ³ë¸Ö ¸ÅÇÎ Àû¿ë
+    // ë²¡í„° ì •ê·œí™” (ê¸¸ì´ë¥¼ 1ë¡œ ë§ì¶¤) ë° ë…¸ë©€ ë§¤í•‘ ì ìš©
     float3 normal = normalize(pin.NormalW);
     float3 tangent = normalize(pin.TangentW);
     
     normal = NormalSampleToWorldSpace(normalMapSample, normal, tangent);
     
-    // °íÁ¤µÈ ÅÂ¾çºû ´ë½Å ±¤¿øÀÇ À§Ä¡¿¡¼­ ÇöÀç ÇÈ¼¿ À§Ä¡¸¦ ÇâÇÏ´Â ºûÀÇ ¹æÇâ º¤ÅÍ °è»ê
-    float3 lightVec = gSpotLightPos - pin.PosW;
-    float d = length(lightVec); // ±¤¿ø°ú Ç¥¸é »çÀÌÀÇ ½ÇÁ¦ °Å¸®
-    
-    // ºûÀÇ µµ´Ş ¹üÀ§¸¦ ¹ş¾î³ª¸é ¿ÏÀüÈ÷ ¾îµÓ°Ô Ã³¸®
-    if (d > gSpotLightRange)
-        return float4(ambient + emissive, texColor.a);
-    
-    lightVec /= d; // lightVec Á¤±ÔÈ­
+    // íƒœì–‘ë¹› ì—°ì‚°
+    float3 lightDir = normalize(-gLightDir);
     float3 viewDir = normalize(gCameraPos - pin.PosW);
     
-    // °Å¸® °¨¼â (Attenuation) °è»ê: °Å¸®°¡ ¸Ö¾îÁú¼ö·Ï ºûÀÌ ºÎµå·´°Ô °¨¼Ò
-    float att = max(0.0f, 1.0f - (d / gSpotLightRange));
+    // Diffuse (ë‚œë°˜ì‚¬ê´‘) ì—°ì‚°
+    float diffuseFactor = max(dot(normal, lightDir), 0.0f);
+    float3 diffuse = diffuseFactor * texColor.rgb * gLightColor;
     
-    // ¿ø»Ô °¢µµ (Spotlight Cone) °è»ê
-    // Á¶¸íÀÌ ¹Ù¶óº¸´Â ¹æÇâ(gSpotLightDir)°ú ÇÈ¼¿·Î ÇâÇÏ´Â ¹æÇâ(-lightVec)ÀÇ ³»Àû
-    float spotFactor = max(dot(-lightVec, normalize(gSpotLightDir)), 0.0f);
-    // ÁöÁ¤µÈ SpotPower Á¦°ö½ÂÀ» ÅëÇØ ¿ø»Ô ÇüÅÂÀÇ ¼±¸íÇÑ ºû Å×µÎ¸® Çü¼º
-    float spotCone = pow(spotFactor, gSpotLightSpotPower);
-    
-    // ÃÖÁ¾ Á¶¸í °áÇÕ °è¼ö (°Å¸® °¨¼â * ¿ø»Ô ÇÊÅÍ)
-    float lightIntensity = att * spotCone;
-    
-    // Diffuse (³­¹İ»ç±¤) ¿¬»ê
-    float diffuseFactor = max(dot(normal, lightVec), 0.0f);
-    float3 diffuse = diffuseFactor * texColor.rgb * gSpotLightColor * lightIntensity;
-    
-    // Specular (Á¤¹İ»ç±¤) ¿¬»ê
-    float3 reflectDir = reflect(-lightVec, normal);
+    // Specular (ì •ë°˜ì‚¬ê´‘) ì—°ì‚°
+    float3 reflectDir = reflect(-lightDir, normal);
     float specPower = max(1.0f, (1.0f - roughness) * 128.0f);
     float specFactor = pow(max(dot(viewDir, reflectDir), 0.0f), specPower);
-    float3 specular = specFactor * gSpotLightColor * (1.0f - roughness) * 0.5f * lightIntensity;
+    float3 specular = specFactor * gLightColor * (1.0f - roughness) * 0.5f;
     
-    // ÃÖÁ¾ »ö»ó ÇÕ»ê (È¯°æ±¤ + ³­¹İ»ç±¤ + Á¤¹İ»ç±¤ + ÀÚÃ¼ ¹ß±¤)
-    float3 finalColor = ambient + diffuse + specular + emissive;
+    // ìµœì¢… ìƒ‰ìƒ í•©ì‚° (í™˜ê²½ê´‘ + ë‚œë°˜ì‚¬ê´‘ + ìì²´ ë°œê´‘)
+    float3 finalColor = ambient + diffuse + emissive;
     
     return float4(finalColor, texColor.a);
 }
