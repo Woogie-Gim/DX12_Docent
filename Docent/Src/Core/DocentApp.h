@@ -136,26 +136,14 @@ private:
 	ComPtr<ID3D12Resource> mWoodTexture;
 	ComPtr<ID3D12Resource> mMemeTexture;
 
-	// DocentApp 클래스 멤버 변수 추가
-	Microsoft::WRL::ComPtr<ID3D12Resource> mDetailsTexture;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mFloorTexture;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueTexture;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeTexture;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsTexture;
-	// 노멀 맵 리소스
+	// 갤러리 통합 텍스처
+	Microsoft::WRL::ComPtr<ID3D12Resource> mGalleryDiffuse;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mGalleryNormal;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mGalleryRoughness;
+
+	// 범용 기본 텍스처
 	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultNormal;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueNormal;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeNormal;
-	// MetallicRougness 리소스
-	Microsoft::WRL::ComPtr<ID3D12Resource> mDetailsMR;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mFloorMR;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mStatueMR;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mTreeMR;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsMR;
-	// Emissive 리소스
 	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultEmissive;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mDetailsEmissive;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mWallsEmissive;
 
 	// SRV 핸들 오프셋 계산용 크기
 	UINT mCbvSrvUavDescriptorSize = 0;

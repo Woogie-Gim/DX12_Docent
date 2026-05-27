@@ -221,40 +221,20 @@ bool DocentApp::BuildCubeGeometry()
 	DirectX::CreateWICTextureFromFile(device, upload, memeTexPath.c_str(), mMemeTexture.ReleaseAndGetAddressOf());
 
 	// 텍스처 파일 경로 추가
-	std::wstring detailsTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\details_baseColor.png";
-	std::wstring floorTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\floor_baseColor.png";
-	std::wstring statueTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\statue_baseColor.png";
-	std::wstring treeTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\tree_baseColor.png";
-	std::wstring wallsTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\walls_baseColor.png";
-	std::wstring defaultNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_normal.png";
-	std::wstring statueNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\statue_normal.png";
-	std::wstring treeNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\tree_normal.png";
-	std::wstring detailsMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\details_metallicRoughness.png";
-	std::wstring floorMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\floor_metallicRoughness.png";
-	std::wstring statueMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\statue_metallicRoughness.png";
-	std::wstring treeMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\tree_metallicRoughness.png";
-	std::wstring wallsMRPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\walls_metallicRoughness.png";
-	std::wstring defaultEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_emissive.png";
-	std::wstring detailsEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\details_emissive.png";
-	std::wstring wallsEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\walls_emissive.png";
+	std::wstring galleryDiffusePath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\Gallery_Diffuse.jpg";
+	std::wstring galleryNormalPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\Gallery_Normal.jpeg";
+	std::wstring galleryRoughnessPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\Gallery_Roughness.jpg";
 
-	// GPU 로드
-	DirectX::CreateWICTextureFromFile(device, upload, detailsTexPath.c_str(), mDetailsTexture.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, floorTexPath.c_str(), mFloorTexture.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, statueTexPath.c_str(), mStatueTexture.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, treeTexPath.c_str(), mTreeTexture.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, wallsTexPath.c_str(), mWallsTexture.ReleaseAndGetAddressOf());
+	// (복구한 기본 파일 경로)
+	std::wstring defaultNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_normal.png";
+	std::wstring defaultEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_emissive.png";
+
+	// GPU 로드 (직관적인 새 변수명 사용)
+	DirectX::CreateWICTextureFromFile(device, upload, galleryDiffusePath.c_str(), mGalleryDiffuse.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, galleryNormalPath.c_str(), mGalleryNormal.ReleaseAndGetAddressOf());
+	DirectX::CreateWICTextureFromFile(device, upload, galleryRoughnessPath.c_str(), mGalleryRoughness.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, defaultNormPath.c_str(), mDefaultNormal.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, statueNormPath.c_str(), mStatueNormal.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, treeNormPath.c_str(), mTreeNormal.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, detailsMRPath.c_str(), mDetailsMR.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, floorMRPath.c_str(), mFloorMR.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, statueMRPath.c_str(), mStatueMR.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, treeMRPath.c_str(), mTreeMR.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, wallsMRPath.c_str(), mWallsMR.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, defaultEmiPath.c_str(), mDefaultEmissive.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, detailsEmiPath.c_str(), mDetailsEmissive.ReleaseAndGetAddressOf());
-	DirectX::CreateWICTextureFromFile(device, upload, wallsEmiPath.c_str(), mWallsEmissive.ReleaseAndGetAddressOf());
 
 	auto finish = upload.End(mDevice->GetCommandQueue());
 	finish.wait();
@@ -265,7 +245,7 @@ bool DocentApp::BuildCubeGeometry()
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 
-	// SRV 생성 헬퍼 람다 함수 (반복 작업 최소화)
+	// SRV 생성 헬퍼 람다 함수
 	auto CreateSRV = [&](Microsoft::WRL::ComPtr<ID3D12Resource> tex) {
 		srvDesc.Format = tex->GetDesc().Format;
 		srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
@@ -273,20 +253,16 @@ bool DocentApp::BuildCubeGeometry()
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 		};
 
-	// 액자 슬롯: 0 ~ 11번, 3재질 * 4개 = 12개
-	// 액자 재질 4칸 세팅 (색상, 노멀, 거칠기, 발광)
-	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR); CreateSRV(mDefaultEmissive);
-	CreateSRV(mMemeTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR); CreateSRV(mDefaultEmissive);
-	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR); CreateSRV(mDefaultEmissive);
+	// 액자 슬롯: 0 ~ 11번 (지워진 mWallsMR 대신 mGalleryRoughness를 임시로 사용)
+	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mGalleryRoughness); CreateSRV(mDefaultEmissive);
+	CreateSRV(mMemeTexture);   CreateSRV(mDefaultNormal); CreateSRV(mGalleryRoughness); CreateSRV(mDefaultEmissive);
+	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mGalleryRoughness); CreateSRV(mDefaultEmissive);
 
-	// 갤러리 슬롯: 12 ~ 35번, 6재질 * 4개 = 24개
-	// 갤러리 재질 4칸 세팅 (디테일과 벽면만 진짜 Emissive 연결)
-	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mWallsMR);  CreateSRV(mDefaultEmissive);
-	CreateSRV(mDetailsTexture); CreateSRV(mDefaultNormal); CreateSRV(mDetailsMR); CreateSRV(mDetailsEmissive);
-	CreateSRV(mFloorTexture);  CreateSRV(mDefaultNormal); CreateSRV(mFloorMR);   CreateSRV(mDefaultEmissive);
-	CreateSRV(mStatueTexture); CreateSRV(mStatueNormal);  CreateSRV(mStatueMR);  CreateSRV(mDefaultEmissive);
-	CreateSRV(mTreeTexture);   CreateSRV(mTreeNormal);    CreateSRV(mTreeMR);    CreateSRV(mDefaultEmissive);
-	CreateSRV(mWallsTexture);  CreateSRV(mDefaultNormal); CreateSRV(mWallsMR);  CreateSRV(mWallsEmissive);
+	// 갤러리 슬롯: 12 ~ 15번 (새 텍스처 4칸 세팅)
+	CreateSRV(mGalleryDiffuse);   // 12: Diffuse
+	CreateSRV(mGalleryNormal);    // 13: Normal
+	CreateSRV(mGalleryRoughness); // 14: Roughness 
+	CreateSRV(mDefaultEmissive);  // 15: Emissive
 
 	UINT cbIndex = 0;
 
