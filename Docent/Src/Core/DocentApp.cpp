@@ -50,7 +50,7 @@ bool DocentApp::Initialize()
 	// 카메라 렌즈(투영 행렬) 초기 세팅
 	float aspectRatio = static_cast<float>(mClientWidth) / mClientHeight;
 	mCamera.SetLens(0.25f * 3.1415926535f, aspectRatio, 1.0f, 1000.0f);
-	mCamera.SetPosition(3.0f, 1.5f, 0.0f);
+	mCamera.SetPosition(0.0f, 1.5f, 0.0f);
 	mCamera.RotateY(DirectX::XMConvertToRadians(90.0f));
 	mCamera.UpdateViewMatrix();
 
@@ -61,34 +61,38 @@ bool DocentApp::Initialize()
 	mWallCollisions.clear();
 	DirectX::BoundingBox wall;
 
-	// 전시장 중앙 가벽
-	wall.Center = DirectX::XMFLOAT3(-0.7f, 2.0f, 0.0f);
-	wall.Extents = DirectX::XMFLOAT3(1.0f, 5.0f, 4.0f);
+	// 외곽 4면 철벽 (갤러리 밖으로 추락 방지)
+
+	// 좌측 외벽 
+	wall.Center = DirectX::XMFLOAT3(-9.2f, 2.0f, 0.0f);
+	wall.Extents = DirectX::XMFLOAT3(0.2f, 5.0f, 10.0f);
 	mWallCollisions.push_back(wall);
 
-	// 다비드상 주변 접근 금지 구역 (가벽 뒤쪽)
-	wall.Center = DirectX::XMFLOAT3(10.0f, 2.0f, 0.0f); // X축 안쪽으로 깊숙한 곳
-	wall.Extents = DirectX::XMFLOAT3(4.0f, 5.0f, 4.0f); // 다비드상 크기만큼 박스 생성
+	// 우측 외벽 
+	wall.Center = DirectX::XMFLOAT3(9.2f, 2.0f, 0.0f);
+	wall.Extents = DirectX::XMFLOAT3(0.2f, 5.0f, 10.0f);
 	mWallCollisions.push_back(wall);
 
-	// 왼쪽 계단 추락 방지 유리벽
-	wall.Center = DirectX::XMFLOAT3(0.0f, 2.0f, -8.0f); // 카메라 기준 왼쪽(-Z 방향)
-	wall.Extents = DirectX::XMFLOAT3(15.0f, 5.0f, 1.0f); // 가로로 길고 얇은 벽
+	// 앞쪽 창문 외벽
+	wall.Center = DirectX::XMFLOAT3(0.0f, 2.0f, 5.5f);
+	wall.Extents = DirectX::XMFLOAT3(10.0f, 5.0f, 0.2f);
 	mWallCollisions.push_back(wall);
 
-	// 오른쪽 계단/나무 추락 방지 유리벽
-	wall.Center = DirectX::XMFLOAT3(0.0f, 2.0f, 8.0f);  // 카메라 기준 오른쪽(+Z 방향)
-	wall.Extents = DirectX::XMFLOAT3(15.0f, 5.0f, 1.0f);
+	// 뒤쪽 입구 외벽
+	wall.Center = DirectX::XMFLOAT3(0.0f, 2.0f, -5.0f);
+	wall.Extents = DirectX::XMFLOAT3(10.0f, 5.0f, 0.2f);
 	mWallCollisions.push_back(wall);
 
-	// 다비드상 뒤쪽 완전 끝 벽 (정면 외벽)
-	wall.Center = DirectX::XMFLOAT3(18.0f, 2.0f, 0.0f); // X축 끝
-	wall.Extents = DirectX::XMFLOAT3(1.0f, 5.0f, 15.0f);
+	// 내부 가벽 (통과 방지)
+
+	// 뒤쪽(입구 쪽) 가벽
+	wall.Center = DirectX::XMFLOAT3(3.7f, 2.0f, -0.2f);
+	wall.Extents = DirectX::XMFLOAT3(1.5f, 5.0f, 2.5f);
 	mWallCollisions.push_back(wall);
 
-	// 유저 등 뒤쪽 완전 끝 벽 (후면 외벽)
-	wall.Center = DirectX::XMFLOAT3(-10.0f, 2.0f, 0.0f); // -X축 끝
-	wall.Extents = DirectX::XMFLOAT3(1.0f, 5.0f, 15.0f);
+	// 앞쪽(창문 쪽) 쉼터 가벽
+	wall.Center = DirectX::XMFLOAT3(-5.2f, 2.0f, -0.2f);
+	wall.Extents = DirectX::XMFLOAT3(1.2f, 5.0f, 2.5f);
 	mWallCollisions.push_back(wall);
 
 	// ImGui 컨텍스트 생성 및 다크 모드 적용
@@ -360,6 +364,11 @@ int DocentApp::Run()
 
 			// UI 메뉴 구성
 			ImGui::Begin("Gallery Menu");
+
+			ImGui::Text("My Pos: X: %.1f / Y: %.1f", passConstants.CameraPos.x, passConstants.CameraPos.y);
+			ImGui::Text("        Z: %.1f", passConstants.CameraPos.z);
+			ImGui::Separator();
+
 			if (ImGui::CollapsingHeader("Artwork List", ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				if (ImGui::Button("1. Left Artwork (X: -5)"))
