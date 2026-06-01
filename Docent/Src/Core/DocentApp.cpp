@@ -304,6 +304,7 @@ bool DocentApp::BuildCubeGeometry()
 		cubeItem->UVOffset = XMFLOAT2(0.0f, 1.0f);
 		cubeItem->UVScale = XMFLOAT2(1.0f, -1.0f);
 		cubeItem->SRVIndexOffset = 0;
+		cubeItem->RotationY = 0.0f;
 
 		cubeItem->ObjCBIndex = cbIndex++;
 
@@ -369,28 +370,50 @@ int DocentApp::Run()
 			ImGui::Text("        Z: %.1f", passConstants.CameraPos.z);
 			ImGui::Separator();
 
-			if (ImGui::CollapsingHeader("Artwork List", ImGuiTreeNodeFlags_DefaultOpen))
+			// 실시간 배치 및 회전 Tool UI
+			if (ImGui::CollapsingHeader("Artwork Placement Tool", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				if (ImGui::Button("1. Left Artwork (X: -5)"))
+				if (mAllRitems.size() > 1)
 				{
-					mTargetCameraPos = XMFLOAT3(-5.0f, 0.0f, -5.0f);
-					mIsCameraMoving = true;
-				}
-				if (ImGui::Button("2. Center Artwork (X: 0)"))
-				{
-					mTargetCameraPos = XMFLOAT3(0.0f, 0.0f, -5.0f);
-					mIsCameraMoving = true;
-				}
-				if (ImGui::Button("3. Right Artwork (X: +5)"))
-				{
-					mTargetCameraPos = XMFLOAT3(5.0f, 0.0f, -5.0f);
-					mIsCameraMoving = true;
-				}
-				ImGui::Spacing();
-				if (ImGui::Button("View All Gallery"))
-				{
-					mTargetCameraPos = XMFLOAT3(0.0f, 0.0f, -12.0f);
-					mIsCameraMoving = true;
+					for (size_t i = 1; i < mAllRitems.size(); ++i)
+					{
+						std::string label = "Frame " + std::to_string(i);
+						if (ImGui::TreeNode(label.c_str()))
+						{
+							// 현재 월드 행렬에서 위치 좌표 추출
+							float pos[3] = { mAllRitems[i]->World._41, mAllRitems[i]->World._42, mAllRitems[i]->World._43 };
+							bool isChanged = false;
+
+							// ImGui UI 컴포넌트 출력
+							if (ImGui::SliderFloat3("Position", pos, -15.0f, 15.0f))
+							{
+								isChanged = true;
+							}
+
+							if (ImGui::SliderFloat("Rotation Y", &mAllRitems[i]->RotationY, 0.0f, 360.0f))
+							{
+								isChanged = true;
+							}
+
+							// 값의 변경이 발생했다면 행렬을 새로 결합 (SRT 법칙)
+							if (isChanged)
+							{
+								// 스케일, 회전, 이동 행렬 각각 생성
+								XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+								XMMATRIX rotMat = XMMatrixRotationY(XMConvertToRadians(mAllRitems[i]->RotationY));
+								XMMATRIX transMat = XMMatrixTranslation(pos[0], pos[1], pos[2]);
+
+								// SRT 결합하여 월드 행렬 재조립
+								XMMATRIX worldMat = scaleMat * rotMat * transMat;
+								XMStoreFloat4x4(&mAllRitems[i]->World, worldMat);
+
+								// 피킹용 충돌 박스 센터 동기화
+								mAllRitems[i]->Bounds.Center = XMFLOAT3(pos[0], pos[1], pos[2]);
+							}
+
+							ImGui::TreePop();
+						}
+					}
 				}
 			}
 			ImGui::End();
@@ -603,18 +626,19 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				float dx = static_cast<float>(LOWORD(lParam) - mLastMousePos.x) * 0.01f;
 				float dy = static_cast<float>(HIWORD(lParam) - mLastMousePos.y) * 0.01f;
 
-				// 선택된 큐브의 World 행렬 가져와서 이동(Translation) 적용
-				XMMATRIX world = XMLoadFloat4x4(&mPickedItem->World);
+				// 마우스 드래그 시에도 기존 회전 각도(RotationY)를 완벽하게 유지하도록 SRT 조립
+				float newX = mPickedItem->World._41 + dx;
+				float newY = mPickedItem->World._42 - dy; // 화면 dy 반전
+				float newZ = mPickedItem->World._43;
 
-				// 모니터 화면은 아래로 갈수록 Y가 커지지만, 3D 공간은 위로 갈수록 Y가 커지므로 dy 부호를 반전(-dy)
-				XMMATRIX move = XMMatrixTranslation(dx, -dy, 0.0f);
+				XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+				XMMATRIX rotMat = XMMatrixRotationY(XMConvertToRadians(mPickedItem->RotationY));
+				XMMATRIX transMat = XMMatrixTranslation(newX, newY, newZ);
 
-				// 기존 변환에 이동을 곱하여 다시 저장
-				XMStoreFloat4x4(&mPickedItem->World, world * move);
+				XMStoreFloat4x4(&mPickedItem->World, scaleMat * rotMat * transMat);
 
-				// ⭐충돌 박스(BoundingBox)의 위치도 같이 옮기기
-				mPickedItem->Bounds.Center.x += dx;
-				mPickedItem->Bounds.Center.y -= dy;
+				// 충돌 박스(BoundingBox)의 위치 동기화
+				mPickedItem->Bounds.Center = XMFLOAT3(newX, newY, newZ);
 			}
 		}
 		// 왼쪽 마우스 누른 상태로 드래그 시 회전
@@ -665,8 +689,10 @@ void DocentApp::Pick(int sx, int sy)
 	mPickedItem = nullptr;
 	float minDist = FLT_MAX; // 가장 가까운 거리를 무한대로 초기화
 
-	for (auto& item : mAllRitems)
+	for (size_t i = 1; i < mAllRitems.size(); ++i) // 0번(갤러리)은 건너뛰고 1번부터
 	{
+		auto& item = mAllRitems[i];
+
 		float dist = 0.0f;
 		// 광선(Ray)과 큐브의 충돌 박스(Bounds)가 교차했는가?
 		if (item->Bounds.Intersects(rayOrigin, rayDir, dist))

@@ -78,6 +78,9 @@ struct RenderItem
 
 	// 텍스처 슬롯 시작 인덱스
 	UINT SRVIndexOffset = 0;
+
+	// 실시간 배치를 위해 개별 물체의 Y축 회전 각도(도 단위) 변수 추가
+	float RotationY = 0.0f;
 };
 
 class DocentApp
