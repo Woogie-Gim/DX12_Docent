@@ -164,4 +164,11 @@ private:
 
 	// 여러 개의 가상 벽을 담을 리스트 추가
 	std::vector<DirectX::BoundingBox> mWallCollisions;
+
+	// 갤러리 벽면의 고정 전시 슬롯 좌표
+	DirectX::XMFLOAT4X4 mDisplaySlots[10];
+
+	// 실제 각 액자(RenderItem)가 현재 몇 번 슬롯에 전시되어 있는지 나타내는 매핑 배열
+	// 인덱스: 액자 번호(Frame 1, 2, 3) 값: 슬롯 번호(0, 1, 2...)
+	int mFrameToSlotMap[4] = { 0, 0, 1, 2 }; // 0번은 안 쓰고, 1번 액자는 0번 슬롯, 2번은 1번 슬롯
 };
