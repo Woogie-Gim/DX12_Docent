@@ -284,30 +284,33 @@ bool DocentApp::BuildCubeGeometry()
 	mAllRitems.push_back(std::move(galleryItem));
 
 	// 가상 전시관 액자 배치 로직
-	float gallerySpacing = 5.0f;
+	float gallerySpacing = 2.0f;
 
 	for (int i = 0; i < 10; ++i)
 	{
 		XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
-		XMMATRIX transMat = XMMatrixTranslation((i - 1) * gallerySpacing, 0.0f, 0.0f);
+		XMMATRIX transMat = XMMatrixTranslation((i - 4.5f) * gallerySpacing, 0.0f, 0.0f);
 
 		XMStoreFloat4x4(&mDisplaySlots[i], scaleMat * transMat);
 	}
 
 	// 실제 액자(RenderItem) 생성 및 초기 전시 슬롯 지정
-	int galleryItemCount = 3;
+	int galleryItemCount = 10;
 
 	for (int i = 1; i <= galleryItemCount; ++i)
 	{
 		auto cubeItem = std::make_unique<RenderItem>();
 
 		// 이 액자가 지정된 슬롯의 월드 행렬을 복사해와서 적용
-		int targetSlot = mFrameToSlotMap[i]; // i번 액자의 목표 슬롯(0, 1, 2)
+		int targetSlot = mFrameToSlotMap[i]; // i번 액자의 목표 슬롯
 		cubeItem->World = mDisplaySlots[targetSlot];
 
 		cubeItem->UVOffset = XMFLOAT2(0.0f, 1.0f);
 		cubeItem->UVScale = XMFLOAT2(1.0f, -1.0f);
-		cubeItem->SRVIndexOffset = 0;
+
+		// 텍스처 슬롯 오프셋 세팅 (0~11번 슬롯 순환 사용)
+		// 나중에 10개 액자에 개별 이미지를 넣을 수 있도록 미리 파이프라인 정렬
+		cubeItem->SRVIndexOffset = ((i - 1) % 3) * 4;
 		cubeItem->RotationY = 0.0f;
 		cubeItem->ObjCBIndex = cbIndex++;
 
@@ -374,7 +377,7 @@ int DocentApp::Run()
 			ImGui::Text("        Z: %.1f", passConstants.CameraPos.z);
 			ImGui::Separator();
 
-			// 실시간 배치 및 회전 Tool UI
+			// 데이터 기반 실시간 큐레이팅 및 배치 관리 툴 (10개 지원 자동화)
 			if (ImGui::CollapsingHeader("Gallery Curation & Placement Tool", ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				if (mAllRitems.size() > 1)
@@ -382,32 +385,18 @@ int DocentApp::Run()
 					// 실시간 작품 위치 교체(Swap) 시스템
 					ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), "[1] Artwork Layout Swap");
 
-					// 1번 액자와 2번 액자의 전시 위치를 실시간으로 스와프하는 버튼
 					if (ImGui::Button("Swap Frame 1 <-> Frame 2"))
 					{
-						// 맵 데이터(슬롯 인덱스) 스와프
-						int temp = mFrameToSlotMap[1];
-						mFrameToSlotMap[1] = mFrameToSlotMap[2];
-						mFrameToSlotMap[2] = temp;
-
-						// 변경된 슬롯 정보에 맞춰 실제 월드 렌더링 행렬 업데이트
-						mAllRitems[1]->World = mDisplaySlots[mFrameToSlotMap[1]];
-						mAllRitems[2]->World = mDisplaySlots[mFrameToSlotMap[2]];
-
-						// 피킹용 충돌 박스도 바뀐 슬롯 위치로 재계산
+						int temp = mFrameToSlotMap[1]; mFrameToSlotMap[1] = mFrameToSlotMap[2]; mFrameToSlotMap[2] = temp;
+						mAllRitems[1]->World = mDisplaySlots[mFrameToSlotMap[1]]; mAllRitems[2]->World = mDisplaySlots[mFrameToSlotMap[2]];
 						mAllRitems[1]->Bounds.Center = XMFLOAT3(mAllRitems[1]->World._41, mAllRitems[1]->World._42, mAllRitems[1]->World._43);
 						mAllRitems[2]->Bounds.Center = XMFLOAT3(mAllRitems[2]->World._41, mAllRitems[2]->World._42, mAllRitems[2]->World._43);
 					}
 					ImGui::SameLine();
 					if (ImGui::Button("Swap Frame 2 <-> Frame 3"))
 					{
-						int temp = mFrameToSlotMap[2];
-						mFrameToSlotMap[2] = mFrameToSlotMap[3];
-						mFrameToSlotMap[3] = temp;
-
-						mAllRitems[2]->World = mDisplaySlots[mFrameToSlotMap[2]];
-						mAllRitems[3]->World = mDisplaySlots[mFrameToSlotMap[3]];
-
+						int temp = mFrameToSlotMap[2]; mFrameToSlotMap[2] = mFrameToSlotMap[3]; mFrameToSlotMap[3] = temp;
+						mAllRitems[2]->World = mDisplaySlots[mFrameToSlotMap[2]]; mAllRitems[3]->World = mDisplaySlots[mFrameToSlotMap[3]];
 						mAllRitems[2]->Bounds.Center = XMFLOAT3(mAllRitems[2]->World._41, mAllRitems[2]->World._42, mAllRitems[2]->World._43);
 						mAllRitems[3]->Bounds.Center = XMFLOAT3(mAllRitems[3]->World._41, mAllRitems[3]->World._42, mAllRitems[3]->World._43);
 					}
@@ -416,7 +405,7 @@ int DocentApp::Run()
 					ImGui::Separator();
 					ImGui::Spacing();
 
-					// 고정 슬롯 좌표 정밀 세팅용 툴
+					// 고정 슬롯 좌표 정밀 세팅용 툴 (10개 자동 생성)
 					ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "[2] Slot Gizmo (Fine Tuning)");
 					for (size_t i = 1; i < mAllRitems.size(); ++i)
 					{
@@ -440,7 +429,7 @@ int DocentApp::Run()
 
 								mAllRitems[i]->Bounds.Center = XMFLOAT3(pos[0], pos[1], pos[2]);
 
-								// 튜닝 중인 현재 변환 상태를 해당 전시 슬롯 데이터에도 실시간 반영
+								// 변경 상태를 해당 전시 슬롯 데이터에 실시간 반영
 								int currentSlot = mFrameToSlotMap[i];
 								mDisplaySlots[currentSlot] = mAllRitems[i]->World;
 							}
