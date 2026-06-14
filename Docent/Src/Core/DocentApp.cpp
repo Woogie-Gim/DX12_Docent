@@ -284,14 +284,29 @@ bool DocentApp::BuildCubeGeometry()
 	mAllRitems.push_back(std::move(galleryItem));
 
 	// 가상 전시관 액자 배치 로직
-	float gallerySpacing = 2.0f;
+	// 임시 배열을 만들어 수집한 수치(X, Y, Z, RotationY)를 정렬
+	struct SlotRaw { float x, y, z, rotY; };
+	SlotRaw rawData[10] = {
+		{ 4.149f, 1.670f, -2.5f,  270.0f }, // Slot 0
+		{ 4.149f, 1.670f, -0.75f, 270.0f }, // Slot 1
+		{ 4.149f, 1.670f,  1.0f,  270.0f }, // Slot 2
+		{ 4.149f, 1.670f,  2.75f, 270.0f }, // Slot 3
+		{ 3.850f, 1.670f,  2.75f,  90.0f }, // Slot 4
+		{ 3.850f, 1.670f,  1.0f,   90.0f }, // Slot 5
+		{ 3.850f, 1.670f, -0.75f,  90.0f }, // Slot 6
+		{ 3.850f, 1.670f, -2.5f,   90.0f }, // Slot 7
+		{ -5.697f, 1.670f, 0.0f,  270.0f }, // Slot 8
+		{ -6.000f, 1.670f, 0.0f,   90.0f }  // Slot 9
+	};
 
+	// 수집 데이터 기반 절대 슬롯 Matrix 세팅
 	for (int i = 0; i < 10; ++i)
 	{
 		XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
-		XMMATRIX transMat = XMMatrixTranslation((i - 4.5f) * gallerySpacing, 0.0f, 0.0f);
+		XMMATRIX rotMat = XMMatrixRotationY(XMConvertToRadians(rawData[i].rotY));
+		XMMATRIX transMat = XMMatrixTranslation(rawData[i].x, rawData[i].y, rawData[i].z);
 
-		XMStoreFloat4x4(&mDisplaySlots[i], scaleMat * transMat);
+		XMStoreFloat4x4(&mDisplaySlots[i], scaleMat * rotMat * transMat);
 	}
 
 	// 실제 액자(RenderItem) 생성 및 초기 전시 슬롯 지정
@@ -301,20 +316,20 @@ bool DocentApp::BuildCubeGeometry()
 	{
 		auto cubeItem = std::make_unique<RenderItem>();
 
-		// 이 액자가 지정된 슬롯의 월드 행렬을 복사해와서 적용
-		int targetSlot = mFrameToSlotMap[i]; // i번 액자의 목표 슬롯
+		// i번 액자가 지정된 슬롯의 월드 행렬을 복사해와서 즉시 적용 
+		int targetSlot = mFrameToSlotMap[i];
 		cubeItem->World = mDisplaySlots[targetSlot];
+
+		// 데이터 백업
+		cubeItem->OriginalPos = XMFLOAT3(rawData[targetSlot].x, rawData[targetSlot].y, rawData[targetSlot].z);
+		cubeItem->RotationY = rawData[targetSlot].rotY;
 
 		cubeItem->UVOffset = XMFLOAT2(0.0f, 1.0f);
 		cubeItem->UVScale = XMFLOAT2(1.0f, -1.0f);
-
-		// 텍스처 슬롯 오프셋 세팅 (0~11번 슬롯 순환 사용)
-		// 나중에 10개 액자에 개별 이미지를 넣을 수 있도록 미리 파이프라인 정렬
 		cubeItem->SRVIndexOffset = ((i - 1) % 3) * 4;
-		cubeItem->RotationY = 0.0f;
 		cubeItem->ObjCBIndex = cbIndex++;
 
-		// 충돌 박스도 해당 슬롯 위치로 초기화
+		// 가벽에 걸린 최종 위치를 기준으로 충돌 박스 생성
 		baseBox.Transform(cubeItem->Bounds, XMLoadFloat4x4(&cubeItem->World));
 		cubeItem->Submeshes = frameSubmeshes;
 
@@ -385,21 +400,89 @@ int DocentApp::Run()
 					// 실시간 작품 위치 교체(Swap) 시스템
 					ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), "[1] Artwork Layout Swap");
 
-					if (ImGui::Button("Swap Frame 1 <-> Frame 2"))
-					{
-						int temp = mFrameToSlotMap[1]; mFrameToSlotMap[1] = mFrameToSlotMap[2]; mFrameToSlotMap[2] = temp;
-						mAllRitems[1]->World = mDisplaySlots[mFrameToSlotMap[1]]; mAllRitems[2]->World = mDisplaySlots[mFrameToSlotMap[2]];
-						mAllRitems[1]->Bounds.Center = XMFLOAT3(mAllRitems[1]->World._41, mAllRitems[1]->World._42, mAllRitems[1]->World._43);
-						mAllRitems[2]->Bounds.Center = XMFLOAT3(mAllRitems[2]->World._41, mAllRitems[2]->World._42, mAllRitems[2]->World._43);
-					}
+					// 스왑 타겟 숫자 입력 창 (가로 정렬)
+					ImGui::PushItemWidth(60.0f);
+					ImGui::InputInt("Frame A", &mSwapSrcIndex, 0, 0);
 					ImGui::SameLine();
-					if (ImGui::Button("Swap Frame 2 <-> Frame 3"))
+					ImGui::InputInt("Frame B", &mSwapDstIndex, 0, 0);
+					ImGui::PopItemWidth();
+
+					ImGui::SameLine();
+
+					// 동적 스왑 실행 버튼
+					if (ImGui::Button("Execute Swap"))
 					{
-						int temp = mFrameToSlotMap[2]; mFrameToSlotMap[2] = mFrameToSlotMap[3]; mFrameToSlotMap[3] = temp;
-						mAllRitems[2]->World = mDisplaySlots[mFrameToSlotMap[2]]; mAllRitems[3]->World = mDisplaySlots[mFrameToSlotMap[3]];
-						mAllRitems[2]->Bounds.Center = XMFLOAT3(mAllRitems[2]->World._41, mAllRitems[2]->World._42, mAllRitems[2]->World._43);
-						mAllRitems[3]->Bounds.Center = XMFLOAT3(mAllRitems[3]->World._41, mAllRitems[3]->World._42, mAllRitems[3]->World._43);
+						// 예외 처리: 인덱스가 범위를 벗어나면 크래시 방지를 위해 무시
+						if (mSwapSrcIndex >= 1 && mSwapSrcIndex < (int)mAllRitems.size() &&
+							mSwapDstIndex >= 1 && mSwapDstIndex < (int)mAllRitems.size())
+						{
+							// 슬롯 인덱스 교환
+							int temp = mFrameToSlotMap[mSwapSrcIndex];
+							mFrameToSlotMap[mSwapSrcIndex] = mFrameToSlotMap[mSwapDstIndex];
+							mFrameToSlotMap[mSwapDstIndex] = temp;
+
+							// 월드 행렬 및 충돌 박스 위치 갱신
+							int srcSlot = mFrameToSlotMap[mSwapSrcIndex];
+							int dstSlot = mFrameToSlotMap[mSwapDstIndex];
+
+							mAllRitems[mSwapSrcIndex]->World = mDisplaySlots[srcSlot];
+							mAllRitems[mSwapDstIndex]->World = mDisplaySlots[dstSlot];
+
+							mAllRitems[mSwapSrcIndex]->Bounds.Center = XMFLOAT3(mAllRitems[mSwapSrcIndex]->World._41, mAllRitems[mSwapSrcIndex]->World._42, mAllRitems[mSwapSrcIndex]->World._43);
+							mAllRitems[mSwapDstIndex]->Bounds.Center = XMFLOAT3(mAllRitems[mSwapDstIndex]->World._41, mAllRitems[mSwapDstIndex]->World._42, mAllRitems[mSwapDstIndex]->World._43);
+						}
 					}
+
+					ImGui::Spacing();
+
+					// 큐러이팅 리셋 버튼 (초기 가벽 정답 위치로 즉시 정렬)
+					// 버튼 색상을 입히기 위해 스타일 컬러를 Push
+					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.0f, 1.0f));         // 일반 상태 (적갈색)
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.3f, 0.0f, 1.0f));  // 마우스 올렸을 때
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.1f, 0.0f, 1.0f));   // 클릭했을 때
+
+					if (ImGui::Button("Reset Curation Layout", ImVec2(0, 0)))
+					{
+						// 원본 정밀 좌표 데이터 로컬 재정의 (행렬 재조립용)
+						struct SlotRaw { float x, y, z, rotY; };
+						SlotRaw defaultSlots[10] = {
+							{ 4.149f, 1.670f, -2.5f,  270.0f },
+							{ 4.149f, 1.670f, -0.75f, 270.0f },
+							{ 4.149f, 1.670f,  1.0f,  270.0f },
+							{ 4.149f, 1.670f,  2.75f, 270.0f },
+							{ 3.850f, 1.670f,  2.75f,  90.0f },
+							{ 3.850f, 1.670f,  1.0f,   90.0f },
+							{ 3.850f, 1.670f, -0.75f,  90.0f },
+							{ 3.850f, 1.670f, -2.5f,   90.0f },
+							{ -5.697f, 1.670f, 0.0f,  270.0f },
+							{ -6.000f, 1.670f, 0.0f,   90.0f }
+						};
+
+						// 기즈모로 변형되었던 절대 슬롯 원본 행렬로 전면 복구
+						for (int i = 0; i < 10; ++i)
+						{
+							XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+							XMMATRIX rotMat = XMMatrixRotationY(XMConvertToRadians(defaultSlots[i].rotY));
+							XMMATRIX transMat = XMMatrixTranslation(defaultSlots[i].x, defaultSlots[i].y, defaultSlots[i].z);
+							XMStoreFloat4x4(&mDisplaySlots[i], scaleMat * rotMat * transMat);
+						}
+
+						// 순서 매핑 복구 및 실제 렌더 아이템 정보 원상복구
+						for (size_t i = 1; i < mAllRitems.size(); ++i)
+						{
+							// 순서 규칙 원상복구 (i번 액자는 i-1번 슬롯)
+							mFrameToSlotMap[i] = (int)i - 1;
+
+							int targetSlot = mFrameToSlotMap[i];
+							mAllRitems[i]->World = mDisplaySlots[targetSlot];
+							mAllRitems[i]->RotationY = defaultSlots[targetSlot].rotY;
+
+							// 충돌 박스 및 데이터 리셋
+							mAllRitems[i]->Bounds.Center = XMFLOAT3(mAllRitems[i]->World._41, mAllRitems[i]->World._42, mAllRitems[i]->World._43);
+							mAllRitems[i]->OriginalPos = XMFLOAT3(defaultSlots[targetSlot].x, defaultSlots[targetSlot].y, defaultSlots[targetSlot].z);
+						}
+					}
+					ImGui::PopStyleColor(3);
 
 					ImGui::Spacing();
 					ImGui::Separator();
