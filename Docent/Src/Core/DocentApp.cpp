@@ -516,6 +516,43 @@ int DocentApp::Run()
 								int currentSlot = mFrameToSlotMap[i];
 								mDisplaySlots[currentSlot] = mAllRitems[i]->World;
 							}
+							// 해당 작품 정면 포커싱 워프 버튼
+							ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.4f, 0.4f, 1.0f));
+							if (ImGui::Button("Focus Camera to This Artwork"))
+							{
+								float angleRadian = XMConvertToRadians(mAllRitems[i]->RotationY);
+
+								float lookX = sinf(angleRadian);
+								float lookZ = cosf(angleRadian);
+
+								float offsetDistance = 2.2f;
+								mTargetCameraPos.x = mAllRitems[i]->World._41 + (lookX * offsetDistance);
+								mTargetCameraPos.y = 1.670f;
+								mTargetCameraPos.z = mAllRitems[i]->World._43 + (lookZ * offsetDistance);
+
+								mCamera.SetPosition(mTargetCameraPos.x, mTargetCameraPos.y, mTargetCameraPos.z);
+
+								// 목표 마주보기 방향 벡터 설정
+								XMVECTOR camLook = XMVectorSet(-lookX, 0.0f, -lookZ, 0.0f);
+								camLook = XMVector3Normalize(camLook);
+
+								// XMMATRIX 정보를 XMFLOAT4X4 구조체로 복사하여 행렬 성분 추출
+								XMFLOAT4X4 view4x4;
+								XMStoreFloat4x4(&view4x4, mCamera.GetView());
+
+								// 현재 카메라 각도와 목표 각도 간의 편차 연산
+								float currentYaw = atan2f(view4x4._13, view4x4._33);
+								float desiredYaw = atan2f(XMVectorGetX(camLook), XMVectorGetZ(camLook));
+								float diffYaw = desiredYaw - currentYaw;
+
+								// 시선 회전 적용 및 뷰 행렬 최신화
+								mCamera.RotateY(diffYaw);
+								mCamera.UpdateViewMatrix();
+
+								mIsCameraMoving = false;
+							}
+							ImGui::PopStyleColor();
+
 							ImGui::TreePop();
 						}
 					}
