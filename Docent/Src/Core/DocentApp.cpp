@@ -525,31 +525,19 @@ int DocentApp::Run()
 								float lookX = sinf(angleRadian);
 								float lookZ = cosf(angleRadian);
 
+								// 액자 정면 관람 위치 목적지 계산
 								float offsetDistance = 2.2f;
 								mTargetCameraPos.x = mAllRitems[i]->World._41 + (lookX * offsetDistance);
 								mTargetCameraPos.y = 1.670f;
 								mTargetCameraPos.z = mAllRitems[i]->World._43 + (lookZ * offsetDistance);
 
-								mCamera.SetPosition(mTargetCameraPos.x, mTargetCameraPos.y, mTargetCameraPos.z);
-
-								// 목표 마주보기 방향 벡터 설정
+								// 카메라가 액자와 마주 볼 최종 목표 절대 각도(Yaw) 연산
 								XMVECTOR camLook = XMVectorSet(-lookX, 0.0f, -lookZ, 0.0f);
 								camLook = XMVector3Normalize(camLook);
+								mTargetCameraRotY = atan2f(XMVectorGetX(camLook), XMVectorGetZ(camLook));
 
-								// XMMATRIX 정보를 XMFLOAT4X4 구조체로 복사하여 행렬 성분 추출
-								XMFLOAT4X4 view4x4;
-								XMStoreFloat4x4(&view4x4, mCamera.GetView());
-
-								// 현재 카메라 각도와 목표 각도 간의 편차 연산
-								float currentYaw = atan2f(view4x4._13, view4x4._33);
-								float desiredYaw = atan2f(XMVectorGetX(camLook), XMVectorGetZ(camLook));
-								float diffYaw = desiredYaw - currentYaw;
-
-								// 시선 회전 적용 및 뷰 행렬 최신화
-								mCamera.RotateY(diffYaw);
-								mCamera.UpdateViewMatrix();
-
-								mIsCameraMoving = false;
+								// 자동 이동 보간 플래그 활성화 (Update에서 제어 시작)
+								mIsCameraMoving = true;
 							}
 							ImGui::PopStyleColor();
 
@@ -674,15 +662,38 @@ void DocentApp::Update(const Timer& timer)
 		XMVECTOR currentPos = XMLoadFloat3(&camPos);
 		XMVECTOR targetPos = XMLoadFloat3(&mTargetCameraPos);
 
-		// 선형 보간으로 부드러운 이동 계산
-		XMVECTOR newPos = XMVectorLerp(currentPos, targetPos, 5.0f * timer.DeltaTime());
+		// 위치 선형 보간 (쓰윽 이동)
+		XMVECTOR newPos = XMVectorLerp(currentPos, targetPos, 3.0f * timer.DeltaTime());
 		mCamera.SetPosition(XMVectorGetX(newPos), XMVectorGetY(newPos), XMVectorGetZ(newPos));
 
-		// 목표 위치 도달 확인
+		// 시선(회전) 실시간 동기화 보간
+		XMFLOAT4X4 view4x4;
+		XMStoreFloat4x4(&view4x4, mCamera.GetView());
+
+		// 현재 카메라 시선 각도 추출
+		float currentYaw = atan2f(view4x4._13, view4x4._33);
+
+		// 현재 각도와 타겟 각도 편차 연산 및 부드러운 회전 적용
+		float diffYaw = mTargetCameraRotY - currentYaw;
+
+		// 각도 표현 범위 제한 (-PI ~ +PI) 예외 처리
+		while (diffYaw < -3.141592f) diffYaw += 6.283185f;
+		while (diffYaw > 3.141592f) diffYaw -= 6.283185f;
+
+		// 회전 속도 보간 적용
+		mCamera.RotateY(diffYaw * 5.0f * timer.DeltaTime());
+
+		// 목표 위치 도달 검사 (오차 범위 내 도달 시 최종 고정)
 		float dist = XMVectorGetX(XMVector3Length(XMVectorSubtract(targetPos, currentPos)));
 		if (dist < 0.05f)
 		{
 			mCamera.SetPosition(mTargetCameraPos.x, mTargetCameraPos.y, mTargetCameraPos.z);
+
+			// 최종 시선 각도 완전 동기화 정렬
+			XMStoreFloat4x4(&view4x4, mCamera.GetView());
+			currentYaw = atan2f(view4x4._13, view4x4._33);
+			mCamera.RotateY(mTargetCameraRotY - currentYaw);
+
 			mIsCameraMoving = false;
 		}
 	}
