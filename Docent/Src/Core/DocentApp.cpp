@@ -528,7 +528,7 @@ int DocentApp::Run()
 								// 액자 정면 관람 위치 목적지 계산
 								float offsetDistance = 2.2f;
 								mTargetCameraPos.x = mAllRitems[i]->World._41 + (lookX * offsetDistance);
-								mTargetCameraPos.y = 1.670f;
+								mTargetCameraPos.y = mAllRitems[i]->World._42; // 액자 고유 슬롯 y축 높이 추출 동기화
 								mTargetCameraPos.z = mAllRitems[i]->World._43 + (lookZ * offsetDistance);
 
 								// 카메라가 액자와 마주 볼 최종 목표 절대 각도(Yaw) 연산
@@ -655,41 +655,41 @@ void DocentApp::Update(const Timer& timer)
 			mCamera.SetPosition(prevPos.x, prevPos.y, prevPos.z);
 		}
 	}
-	// 자동 이동 (UI 버튼 클릭 시)
+	// 자동 이동 및 시선 보간 제어 파트
 	else
 	{
 		XMFLOAT3 camPos = mCamera.GetPosition3f();
 		XMVECTOR currentPos = XMLoadFloat3(&camPos);
 		XMVECTOR targetPos = XMLoadFloat3(&mTargetCameraPos);
 
-		// 위치 선형 보간 (쓰윽 이동)
+		// 1. 위치 선형 보간 연산 (쓰윽 이동)
 		XMVECTOR newPos = XMVectorLerp(currentPos, targetPos, 3.0f * timer.DeltaTime());
 		mCamera.SetPosition(XMVectorGetX(newPos), XMVectorGetY(newPos), XMVectorGetZ(newPos));
 
-		// 시선(회전) 실시간 동기화 보간
+		// 2. 시선(회전) 실시간 동기화 보간 연산
 		XMFLOAT4X4 view4x4;
 		XMStoreFloat4x4(&view4x4, mCamera.GetView());
 
-		// 현재 카메라 시선 각도 추출
+		// 현재 카메라 시선 절대 각도 추출
 		float currentYaw = atan2f(view4x4._13, view4x4._33);
-
-		// 현재 각도와 타겟 각도 편차 연산 및 부드러운 회전 적용
+		
+		// 현재 각도와 타겟 각도 사이의 편차 계산
 		float diffYaw = mTargetCameraRotY - currentYaw;
-
-		// 각도 표현 범위 제한 (-PI ~ +PI) 예외 처리
+		
+		// 최단 거리 회전을 위한 라디안 범위 제한 예외 처리 (-PI ~ +PI)
 		while (diffYaw < -3.141592f) diffYaw += 6.283185f;
 		while (diffYaw > 3.141592f) diffYaw -= 6.283185f;
 
-		// 회전 속도 보간 적용
+		// 프레임 독립적 속도로 시선 회전 보간 적용
 		mCamera.RotateY(diffYaw * 5.0f * timer.DeltaTime());
 
-		// 목표 위치 도달 검사 (오차 범위 내 도달 시 최종 고정)
+		// 목표 위치 도달 검사 (오차 범위 내 도달 시 최종 고정 및 제어권 해제)
 		float dist = XMVectorGetX(XMVector3Length(XMVectorSubtract(targetPos, currentPos)));
 		if (dist < 0.05f)
 		{
 			mCamera.SetPosition(mTargetCameraPos.x, mTargetCameraPos.y, mTargetCameraPos.z);
 
-			// 최종 시선 각도 완전 동기화 정렬
+			// 최종 시선 각도 오차 완전 동기화 정렬
 			XMStoreFloat4x4(&view4x4, mCamera.GetView());
 			currentYaw = atan2f(view4x4._13, view4x4._33);
 			mCamera.RotateY(mTargetCameraRotY - currentYaw);
@@ -698,8 +698,13 @@ void DocentApp::Update(const Timer& timer)
 		}
 	}
 
-	DirectX::XMFLOAT3 finalPos = mCamera.GetPosition3f();
-	mCamera.SetPosition(finalPos.x, 1.5f, finalPos.z);
+	// ⭐ [버그 대수선] 자동 이동 중일 때는 연산된 액자 목적지 높이(mTargetCameraPos.y)를 유지하고,
+	// 일반 자유 워킹 상태일 때만 눈높이 바닥면 높이를 1.5f로 강제 고정합니다.
+	if (!mIsCameraMoving)
+	{
+		DirectX::XMFLOAT3 finalPos = mCamera.GetPosition3f();
+		mCamera.SetPosition(finalPos.x, 1.5f, finalPos.z);
+	}
 
 	mCamera.UpdateViewMatrix();
 }
@@ -714,6 +719,12 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	switch (msg)
 	{
 	case WM_LBUTTONDOWN:
+		// 🚀 [버그 수정] 마우스 커서가 ImGui UI 영역 패널 위에 올라와 있을 때는 3D 레이캐스팅 피킹을 차단합니다.
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			return 0;
+		}
+
 		// 마우스를 클릭했을 때 피킹(광선 쏘기) 함수 호출
 		Pick(LOWORD(lParam), HIWORD(lParam));
 
@@ -816,41 +827,34 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+// ⭐ [복구 및 동기화] 유실되었던 레이캐스팅 피킹 함수 알고리즘 본문
 void DocentApp::Pick(int sx, int sy)
 {
-	// 투영 행렬 정보를 가져오기 위해 XMFLOAT4X4로 변환
 	DirectX::XMFLOAT4X4 proj;
 	XMStoreFloat4x4(&proj, mCamera.GetProj());
 
-	// 스크린 픽셀 좌표를 NDC 좌표계(-1.0 ~ 1.0) 및 View 공간 방향으로 변환
 	float vx = (+2.0f * sx / mClientWidth - 1.0f) / proj(0, 0);
 	float vy = (-2.0f * sy / mClientHeight + 1.0f) / proj(1, 1);
 
-	// 카메라 원점(0,0,0)에서 마우스 클릭 방향(vx, vy, 1)으로 쏘는 광선(Ray) 세팅
 	XMVECTOR rayOrigin = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
 	XMVECTOR rayDir = XMVectorSet(vx, vy, 1.0f, 0.0f);
 
-	// View 공간의 광선을 World 공간으로 변환 (View 행렬의 역행렬을 곱함)
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX invView = XMMatrixInverse(nullptr, view);
 
 	rayOrigin = XMVector3TransformCoord(rayOrigin, invView);
 	rayDir = XMVector3TransformNormal(rayDir, invView);
-	rayDir = XMVector3Normalize(rayDir); // 광선의 길이를 1로 일정하게 맞춤(정규화)
+	rayDir = XMVector3Normalize(rayDir);
 
-	// 모든 큐브의 충돌 박스와 광선이 부딪혔는지 검사!
 	mPickedItem = nullptr;
-	float minDist = FLT_MAX; // 가장 가까운 거리를 무한대로 초기화
+	float minDist = FLT_MAX;
 
-	for (size_t i = 1; i < mAllRitems.size(); ++i) // 0번(갤러리)은 건너뛰고 1번부터
+	for (size_t i = 1; i < mAllRitems.size(); ++i)
 	{
 		auto& item = mAllRitems[i];
-
 		float dist = 0.0f;
-		// 광선(Ray)과 큐브의 충돌 박스(Bounds)가 교차했는가?
 		if (item->Bounds.Intersects(rayOrigin, rayDir, dist))
 		{
-			// 여러 개가 겹쳐 있다면 카메라에서 가장 가까운 큐브를 선택된 큐브로 지정
 			if (dist < minDist)
 			{
 				minDist = dist;
@@ -859,65 +863,51 @@ void DocentApp::Pick(int sx, int sy)
 		}
 	}
 
-	// 선택된 큐브가 있다면 출력 창에 로그 띄우기
 	if (mPickedItem != nullptr)
 	{
 		OutputDebugStringA("큐브 클릭 성공! (Raycast Hit!)\n");
 	}
 }
 
+// ⭐ [복구 및 동기화] 유실되었던 Assimp 모델 파일 에셋 로더 본문 함수 세트
 bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes) 
 {
 	Assimp::Importer importer;
-	// FBX는 단위가 제각각일 수 있어 GlobalScale 옵션을 고려할 수 있습니다.
 	const aiScene* scene = importer.ReadFile(filename,
 		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | 
-		aiProcess_ConvertToLeftHanded | aiProcess_Triangulate | aiProcess_FlipUVs | 
-		aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded | 
-		aiProcess_CalcTangentSpace);
+		aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
 
 	if (!scene) return false;
 
-	// 루트 노드부터 시작해서 모든 자식 노드의 메쉬를 수집합니다.
 	ProcessNode(scene->mRootNode, scene, vertices, indices, submeshes);
-
 	return true;
 }
 
-// 재귀적으로 노드를 방문하며 메쉬를 꺼내는 함수
 void DocentApp::ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
-	// 현재 노드가 가진 모든 메쉬 처리
 	for (unsigned int i = 0; i < node->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
 		ProcessMesh(mesh, vertices, indices, submeshes);
 	}
 
-	// 자식 노드들도 똑같이 처리 (재귀)
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
 	{
 		ProcessNode(node->mChildren[i], scene, vertices, indices, submeshes);
-
 	}
 }
 
-// 실제 정점과 인덱스를 뽑아내는 함수
 void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
-	// 서브메쉬 정보 기록 시작
 	SubmeshGeometry submesh;
-	submesh.StartIndexLocation = (UINT)indices.size(); // 현재 인덱스 시작 위치
-	submesh.MaterialIndex = mesh->mMaterialIndex;      // Assimp가 알려주는 재질 번호
+	submesh.StartIndexLocation = (UINT)indices.size();
+	submesh.MaterialIndex = mesh->mMaterialIndex; 
 
-	// 현재까지 바구니(vertices)에 담긴 정점의 개수를 기억해 둠
 	UINT vertexOffset = (UINT)vertices.size();
 
-	// 정점(Vertices) 정보 빼오기
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
 		Vertex vertex;
-
 		vertex.Pos.x = mesh->mVertices[i].x;
 		vertex.Pos.y = mesh->mVertices[i].y;
 		vertex.Pos.z = mesh->mVertices[i].z;
@@ -939,8 +929,6 @@ void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::ve
 			vertex.TexC = XMFLOAT2(0.0f, 0.0f);
 		}
 
-		// 접선(Tangent) 정보 빼오기
-		// Assimp가 모델을 읽을 때 접선 정보도 계산해서 가지고 있는지 확인
 		if (mesh->HasTangentsAndBitangents())
 		{
 			vertex.Tangent.x = mesh->mTangents[i].x;
@@ -949,25 +937,21 @@ void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::ve
 		}
 		else
 		{
-			// 접선 정보가 없는 모델일 경우 기본값 부여 (에러 방지용)
 			vertex.Tangent = DirectX::XMFLOAT3(1.0f, 0.0f, 0.0f);
 		}
 
 		vertices.push_back(vertex);
 	}
 
-	// 인덱스(Indices) 정보 빼오기
 	for (unsigned int i = 0; i < mesh->mNumFaces; i++)
 	{
 		aiFace face = mesh->mFaces[i];
 		for (unsigned int j = 0; j < face.mNumIndices; j++)
 		{
-			// 0번부터 시작하는 인덱스에, 이전에 담아둔 정점 개수(Offset)를 더함
 			indices.push_back(face.mIndices[j] + vertexOffset);
 		}
 	}
 
-	// 기록 마무리에 추가된 인덱스 개수 계산
 	submesh.IndexCount = (UINT)indices.size() - submesh.StartIndexLocation;
 	submeshes.push_back(submesh);
 }
