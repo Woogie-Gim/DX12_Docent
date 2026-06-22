@@ -109,8 +109,8 @@ protected:
 	HINSTANCE mhAppInst = nullptr;
 	HWND mhMainWnd = nullptr;
 	std::wstring mMainWndCaption = L"Project Docent";
-	int mClientWidth = 1280;
-	int mClientHeight = 720;
+	int mClientWidth = 1920;
+	int mClientHeight = 1080;
 
 	std::unique_ptr<Device> mDevice; // Device °´Ã¼ ¸â¹ö º¯¼ö ¼±¾ð
 	Camera mCamera; // Ä«¸Þ¶ó °´Ã¼ ¼±¾ð

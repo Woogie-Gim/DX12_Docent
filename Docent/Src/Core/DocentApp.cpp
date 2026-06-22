@@ -101,6 +101,11 @@ bool DocentApp::Initialize()
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	ImGui::StyleColorsDark();
 
+	// 모바일 최적화 글로벌 UI 요소 스케일 및 폰트 크기 배율 조정
+	// 기본 폰트 아틀라스 크기 자체를 기본값의 1.5배인 24.0f로 빌드하여 모바일 터치 가독성 확보
+	io.Fonts->AddFontDefault();
+	io.FontGlobalScale = 1.5f;
+
 	// Win32 백엔드 초기화
 	ImGui_ImplWin32_Init(mhMainWnd);
 
@@ -385,8 +390,12 @@ int DocentApp::Run()
 			ImGui_ImplWin32_NewFrame();
 			ImGui::NewFrame();
 
-			// UI 메뉴 구성
-			ImGui::Begin("Gallery Menu");
+			// 모바일 레이아웃 고정, 패널이 모바일 창 좌측 상단 구석에 고정되도록 초기 위치/크기 강제 세팅
+			ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSize(ImVec2(450.0f, 600.0f), ImGuiCond_FirstUseEver);
+
+			// UI 메뉴 구성 (가시성을 높이기 위해 콤팩트한 윈도우 스타일 적용)
+			ImGui::Begin("Gallery Menu", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
 			ImGui::Text("My Pos: X: %.1f / Y: %.1f", passConstants.CameraPos.x, passConstants.CameraPos.y);
 			ImGui::Text("        Z: %.1f", passConstants.CameraPos.z);
