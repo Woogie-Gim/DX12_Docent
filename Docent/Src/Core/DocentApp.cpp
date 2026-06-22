@@ -70,7 +70,7 @@ bool DocentApp::Initialize()
 
 	// 우측 외벽 
 	wall.Center = DirectX::XMFLOAT3(9.2f, 2.0f, 0.0f);
-	wall.Extents = DirectX::XMFLOAT3(0.2f, 5.0f, 10.0f);
+	wall.Extents = DirectX::XMFLOAT3(0.2f, 5.0f, 7.0f);
 	mWallCollisions.push_back(wall);
 
 	// 앞쪽 창문 외벽
@@ -87,7 +87,7 @@ bool DocentApp::Initialize()
 
 	// 뒤쪽(입구 쪽) 가벽
 	wall.Center = DirectX::XMFLOAT3(3.7f, 2.0f, -0.2f);
-	wall.Extents = DirectX::XMFLOAT3(1.5f, 5.0f, 2.5f);
+	wall.Extents = DirectX::XMFLOAT3(0.2f, 5.0f, 2.5f);
 	mWallCollisions.push_back(wall);
 
 	// 앞쪽(창문 쪽) 쉼터 가벽
@@ -634,6 +634,12 @@ void DocentApp::Update(const Timer& timer)
 		// 이동 후 새로운 위치 측정
 		DirectX::XMFLOAT3 currPos = mCamera.GetPosition3f();
 
+		// 키보드로 조작된 새로운 X, Z 좌표를 보존하면서 눈높이를 1.5f 평면으로 정교하게 클램핑
+		mCamera.SetPosition(currPos.x, 1.5f, currPos.z);
+
+		// 최종 눈높이가 맞춰진 위치를 충돌 검사용 좌표로 확정
+		currPos = mCamera.GetPosition3f();
+
 		// 카메라를 보호하는 가상의 구 생성 (반지름 0.5f)
 		DirectX::BoundingSphere cameraSphere(currPos, 0.5f);
 		bool isColliding = false;
@@ -662,20 +668,20 @@ void DocentApp::Update(const Timer& timer)
 		XMVECTOR currentPos = XMLoadFloat3(&camPos);
 		XMVECTOR targetPos = XMLoadFloat3(&mTargetCameraPos);
 
-		// 1. 위치 선형 보간 연산 (쓰윽 이동)
+		// 위치 선형 보간 연산 (쓰윽 이동)
 		XMVECTOR newPos = XMVectorLerp(currentPos, targetPos, 3.0f * timer.DeltaTime());
 		mCamera.SetPosition(XMVectorGetX(newPos), XMVectorGetY(newPos), XMVectorGetZ(newPos));
 
-		// 2. 시선(회전) 실시간 동기화 보간 연산
+		// 시선(회전) 실시간 동기화 보간 연산
 		XMFLOAT4X4 view4x4;
 		XMStoreFloat4x4(&view4x4, mCamera.GetView());
 
 		// 현재 카메라 시선 절대 각도 추출
 		float currentYaw = atan2f(view4x4._13, view4x4._33);
-		
+
 		// 현재 각도와 타겟 각도 사이의 편차 계산
 		float diffYaw = mTargetCameraRotY - currentYaw;
-		
+
 		// 최단 거리 회전을 위한 라디안 범위 제한 예외 처리 (-PI ~ +PI)
 		while (diffYaw < -3.141592f) diffYaw += 6.283185f;
 		while (diffYaw > 3.141592f) diffYaw -= 6.283185f;
@@ -683,32 +689,25 @@ void DocentApp::Update(const Timer& timer)
 		// 프레임 독립적 속도로 시선 회전 보간 적용
 		mCamera.RotateY(diffYaw * 5.0f * timer.DeltaTime());
 
-		// 목표 위치 도달 검사 (오차 범위 내 도달 시 최종 고정 및 제어권 해제)
+		// 목표 위치 도달 검사 (오차 범위를 0.08f로 완충하여 최종 안정성 확보)
 		float dist = XMVectorGetX(XMVector3Length(XMVectorSubtract(targetPos, currentPos)));
-		if (dist < 0.05f)
+		if (dist < 0.08f)
 		{
+			// 목적지 좌표 및 시선 앵글 최종 강제 동기화 고정
 			mCamera.SetPosition(mTargetCameraPos.x, mTargetCameraPos.y, mTargetCameraPos.z);
 
-			// 최종 시선 각도 오차 완전 동기화 정렬
 			XMStoreFloat4x4(&view4x4, mCamera.GetView());
 			currentYaw = atan2f(view4x4._13, view4x4._33);
 			mCamera.RotateY(mTargetCameraRotY - currentYaw);
 
+			// 주행 상태 해제 및 수동 WASD 제어권 반환
 			mIsCameraMoving = false;
 		}
 	}
 
-	// ⭐ [버그 대수선] 자동 이동 중일 때는 연산된 액자 목적지 높이(mTargetCameraPos.y)를 유지하고,
-	// 일반 자유 워킹 상태일 때만 눈높이 바닥면 높이를 1.5f로 강제 고정합니다.
-	if (!mIsCameraMoving)
-	{
-		DirectX::XMFLOAT3 finalPos = mCamera.GetPosition3f();
-		mCamera.SetPosition(finalPos.x, 1.5f, finalPos.z);
-	}
-
+	// 뷰 행렬 최종 업데이트
 	mCamera.UpdateViewMatrix();
 }
-
 // 메시지 처리
 LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -719,7 +718,7 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	switch (msg)
 	{
 	case WM_LBUTTONDOWN:
-		// 🚀 [버그 수정] 마우스 커서가 ImGui UI 영역 패널 위에 올라와 있을 때는 3D 레이캐스팅 피킹을 차단합니다.
+		//  마우스 커서가 ImGui UI 영역 패널 위에 올라와 있을 때는 3D 레이캐스팅 피킹을 차단
 		if (ImGui::GetIO().WantCaptureMouse)
 		{
 			return 0;
