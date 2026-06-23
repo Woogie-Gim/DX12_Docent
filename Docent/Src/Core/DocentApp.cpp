@@ -788,19 +788,23 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		ReleaseCapture();
 		return 0;
 
-	case WM_MOUSEMOVE:
-		// 왼쪽 마우스 누른 상태로 드래그 시 (큐브 이동)
+	case WM_MOUSEMOVE: 
+		// AR 피벗 : 모바일 싱글 터치 드래그 및 마우스 무브 통합 매핑 영역
+		// 마우스 왼쪽 버튼(또는 모바일 싱글 터치)이 눌린 상태로 드래그할 때
 		if ((wParam & MK_LBUTTON) != 0)
 		{
+			// 이동량 계산 (픽셀 변화량을 3D 공간 스케일에 맞게 조절)
+			float dx = static_cast<float>(LOWORD(lParam) - mLastMousePos.x);
+			float dy = static_cast<float>(HIWORD(lParam) - mLastMousePos.y);
+
+			// 작품 편집 터치 : 만약 피킹으로 잡고 있는 액자가 있다면 액자를 드래그 이동
 			if (mPickedItem != nullptr)
 			{
-				// 이동량 계산 (픽셀 이동량을 3D 공간 비율로 적절히 축소)
-				float dx = static_cast<float>(LOWORD(lParam) - mLastMousePos.x) * 0.01f;
-				float dy = static_cast<float>(HIWORD(lParam) - mLastMousePos.y) * 0.01f;
+				float scaleDx = dx * 0.01f;
+				float scaleDy = dy * 0.01f;
 
-				// 마우스 드래그 시에도 기존 회전 각도(RotationY)를 완벽하게 유지하도록 SRT 조립
-				float newX = mPickedItem->World._41 + dx;
-				float newY = mPickedItem->World._42 - dy; // 화면 dy 반전
+				float newX = mPickedItem->World._41 + scaleDx;
+				float newY = mPickedItem->World._42 - scaleDy; // 화면 dy 반전 적용
 				float newZ = mPickedItem->World._43;
 
 				XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
@@ -809,21 +813,22 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 				XMStoreFloat4x4(&mPickedItem->World, scaleMat * rotMat * transMat);
 
-				// 충돌 박스(BoundingBox)의 위치 동기화
+				// 충돌 박스(BoundingBox) 위치 실시간 동기화
 				mPickedItem->Bounds.Center = XMFLOAT3(newX, newY, newZ);
 			}
-		}
-		// 왼쪽 마우스 누른 상태로 드래그 시 회전
-		else if ((wParam & MK_RBUTTON) != 0)
-		{
-			// 이동량 계산
-			float dx = XMConvertToRadians(0.25f * static_cast<float>(LOWORD(lParam) - mLastMousePos.x));
-			float dy = XMConvertToRadians(0.25f * static_cast<float>(HIWORD(lParam) - mLastMousePos.y));
+			// 시선 전환 터치 : 잡고 있는 액자가 없는 빈 화면 터치 상태라면 카메라 고개(시선) 회전
+			else
+			{
+				// 모바일 화면 터치 회전 감도에 맞게 라디안 세팅 조정
+				float radianDx = XMConvertToRadians(0.15f * dx);
+				float radianDy = XMConvertToRadians(0.15f * dy);
 
-			mCamera.Pitch(dy);
-			mCamera.RotateY(dx);
+				mCamera.Pitch(radianDy);
+				mCamera.RotateY(radianDx);
+			}
 		}
-		// 마우스 위치 갱신
+
+		// 마우스 및 터치 최종 런타임 좌표 갱신
 		mLastMousePos.x = LOWORD(lParam);
 		mLastMousePos.y = HIWORD(lParam);
 		return 0;
