@@ -31,6 +31,8 @@ public:
     // 카메라의 현재 위치를 XMFLOAT3 형태로 반환
     DirectX::XMFLOAT3 GetPosition3f() const { return mPosition; }
 
+    void UpdateRotationFromQuaternion(float qx, float qy, float qz, float qw);
+
 private:
     // 카메라 위치 및 3축 방향 벡터
     DirectX::XMFLOAT3 mPosition = { 0.0f, 0.0f, -5.0f };

@@ -103,6 +103,30 @@ void Camera::UpdateViewMatrix()
     }
 }
 
+void Camera::UpdateRotationFromQuaternion(float qx, float qy, float qz, float qw)
+{
+    // 센서로부터 전달받은 쿼터니언 로드
+    XMVECTOR q = XMVectorSet(qx, qy, qz, qw);
+
+    // 쿼터니언을 DirectX 12 회전 행렬로 변환
+    XMMATRIX R = XMMatrixRotationQuaternion(q);
+
+    // AR 디바이스 기준 전방(0,0,1), 우측(1,0,0), 상단(0,1,0) 기본 벡터에 회전 적용
+    XMVECTOR defaultLook = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    XMVECTOR defaultRight = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
+    XMVECTOR defaultUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+    // 행렬 변환을 통해 모바일 센서와 동기화된 가상 3축 기저 벡터 추출
+    XMVECTOR sLook = XMVector3TransformNormal(defaultLook, R);
+    XMVECTOR sRight = XMVector3TransformNormal(defaultRight, R);
+    XMVECTOR sUp = XMVector3TransformNormal(defaultUp, R);
+
+    // 카메라 내부 3축 기저 벡터 멤버 변수에 최종 덮어쓰기
+    XMStoreFloat3(&mLook, XMVector3Normalize(sLook));
+    XMStoreFloat3(&mRight, XMVector3Normalize(sRight));
+    XMStoreFloat3(&mUp, XMVector3Normalize(sUp));
+}
+
 XMMATRIX Camera::GetView() const
 {
     return XMLoadFloat4x4(&mView);

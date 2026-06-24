@@ -635,39 +635,53 @@ void DocentApp::Update(const Timer& timer)
 	// 수동 이동 (자동 이동 중이 아닐 때만 작동하도록 수정)
 	if (!mIsCameraMoving)
 	{
-		if (GetAsyncKeyState('W') & 0x8000) mCamera.Walk(speed);
-		if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
-		if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
-		if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
-
-		// 이동 후 새로운 위치 측정
-		DirectX::XMFLOAT3 currPos = mCamera.GetPosition3f();
-
-		// 키보드로 조작된 새로운 X, Z 좌표를 보존하면서 눈높이를 1.5f 평면으로 정교하게 클램핑
-		mCamera.SetPosition(currPos.x, 1.5f, currPos.z);
-
-		// 최종 눈높이가 맞춰진 위치를 충돌 검사용 좌표로 확정
-		currPos = mCamera.GetPosition3f();
-
-		// 카메라를 보호하는 가상의 구 생성 (반지름 0.5f)
-		DirectX::BoundingSphere cameraSphere(currPos, 0.5f);
-		bool isColliding = false;
-
-		// 모든 가상 벽들을 순회하며 충돌 검사
-		for (const auto& wall : mWallCollisions)
+		// 모바일 AR 런타임 : 센서 데이터 활성화 시 (실제 스마트폰 구동 환경)
+		if (mIsMobileSensorActive)
 		{
-			// 카메라 구(Sphere)와 벽 박스(Box)가 겹쳤는지 확인
-			if (wall.Intersects(cameraSphere))
-			{
-				isColliding = true;
-				break;
-			}
+			// 플랫폼 센서 매니저로부터 최신 자이로 쿼터니언 데이터 수신 (가상 데이터)
+			float qx = 0.0f, qy = 0.0f, qz = 0.0f, qw = 1.0f;
+			GetMobileSensorQuaternion(&qx, &qy, &qz, &qw);
+
+			// 디바이스 회전값과 카메라 행렬 완전 동기화
+			mCamera.UpdateRotationFromQuaternion(qx, qy, qz, qw);
 		}
-
-		// 벽에 부딪혔다면 이전 위치로 복구
-		if (isColliding)
+		// PC 디버깅 런타임 : 기존 마우스 드래그 및 WASD 조작 보존
+		else
 		{
-			mCamera.SetPosition(prevPos.x, prevPos.y, prevPos.z);
+			if (GetAsyncKeyState('W') & 0x8000) mCamera.Walk(speed);
+			if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
+			if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
+			if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
+
+			// 이동 후 새로운 위치 측정
+			DirectX::XMFLOAT3 currPos = mCamera.GetPosition3f();
+
+			// 키보드로 조작된 새로운 X, Z 좌표를 보존하면서 눈높이를 1.5f 평면으로 정교하게 클램핑
+			mCamera.SetPosition(currPos.x, 1.5f, currPos.z);
+
+			// 최종 눈높이가 맞춰진 위치를 충돌 검사용 좌표로 확정
+			currPos = mCamera.GetPosition3f();
+
+			// 카메라를 보호하는 가상의 구 생성 (반지름 0.5f)
+			DirectX::BoundingSphere cameraSphere(currPos, 0.5f);
+			bool isColliding = false;
+
+			// 모든 가상 벽들을 순회하며 충돌 검사
+			for (const auto& wall : mWallCollisions)
+			{
+				// 카메라 구(Sphere)와 벽 박스(Box)가 겹쳤는지 확인
+				if (wall.Intersects(cameraSphere))
+				{
+					isColliding = true;
+					break;
+				}
+			}
+
+			// 벽에 부딪혔다면 이전 위치로 복구
+			if (isColliding)
+			{
+				mCamera.SetPosition(prevPos.x, prevPos.y, prevPos.z);
+			}
 		}
 	}
 	// 자동 이동 및 시선 보간 제어 파트
@@ -717,6 +731,17 @@ void DocentApp::Update(const Timer& timer)
 	// 뷰 행렬 최종 업데이트
 	mCamera.UpdateViewMatrix();
 }
+
+//  플랫폼 센서 값 연동 함수 임시 본문
+void DocentApp::GetMobileSensorQuaternion(float* x, float* y, float* z, float* w)
+{
+	// 실제 모바일 하드웨어 이식 전까지 컴파일 및 디버깅을 위해 기본 단위 쿼터니언 상태 보존
+	*x = 0.0f;
+	*y = 0.0f;
+	*z = 0.0f;
+	*w = 1.0f;
+}
+
 // 메시지 처리
 LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {

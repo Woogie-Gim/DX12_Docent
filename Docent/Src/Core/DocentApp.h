@@ -175,4 +175,10 @@ private:
 
 	int mSwapSrcIndex = 1; // 스왑할 첫 번째 액자 번호 (1~10)
 	int mSwapDstIndex = 2; // 스왑할 두 번째 액자 번호 (1~10)
+
+	// 모바일 AR 트래킹 센서 활성화 여부를 제어하는 플래그 변수
+	bool mIsMobileSensorActive = false;
+
+	// 플랫폼 하드웨어 센서로부터 자이로 쿼터니언 값을 수신하는 인터페이스 함수
+	void GetMobileSensorQuaternion(float* x, float* y, float* z, float* w);
 };
