@@ -149,6 +149,12 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultNormal;
 	Microsoft::WRL::ComPtr<ID3D12Resource> mDefaultEmissive;
 
+	// 1번 액자에 실시간으로 촬영된 사진을 바인딩할 동적 텍스처 리소스 포인터
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDynamicCameraTexture;
+
+	// CPU에서 GPU 메모리로 데이터를 중간 전달하기 위한 업로드 힙 리소스
+	Microsoft::WRL::ComPtr<ID3D12Resource> mTextureUploadBuffer;
+
 	// SRV 핸들 오프셋 계산용 크기
 	UINT mCbvSrvUavDescriptorSize = 0;
 
@@ -181,4 +187,7 @@ private:
 
 	// 플랫폼 하드웨어 센서로부터 자이로 쿼터니언 값을 수신하는 인터페이스 함수
 	void GetMobileSensorQuaternion(float* x, float* y, float* z, float* w);
+
+	// 실시간 이미지 버퍼를 받아 GPU 텍스처 메모리를 갱신하는 동적 업로드 함수
+	void UploadCameraTextureRuntime(unsigned char* pixelData, int width, int height);
 };

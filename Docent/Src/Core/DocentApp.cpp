@@ -135,13 +135,13 @@ bool DocentApp::InitMainWindow()
 	// 구조체 0으로 초기화
 	WNDCLASS wc = { 0 };
 
-	wc.style		 = CS_HREDRAW | CS_VREDRAW;
-	wc.lpfnWndProc	 = WindowProc;
-	wc.cbClsExtra	 = 0;
-	wc.cbWndExtra	 = 0;
-	wc.hInstance	 = mhAppInst;
-	wc.hIcon		 = LoadIcon(0, IDI_APPLICATION);
-	wc.hCursor		 = LoadCursor(0, IDC_ARROW);
+	wc.style = CS_HREDRAW | CS_VREDRAW;
+	wc.lpfnWndProc = WindowProc;
+	wc.cbClsExtra = 0;
+	wc.cbWndExtra = 0;
+	wc.hInstance = mhAppInst;
+	wc.hIcon = LoadIcon(0, IDI_APPLICATION);
+	wc.hCursor = LoadCursor(0, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
 	wc.lpszClassName = L"MainWnd";
 
@@ -340,6 +340,37 @@ bool DocentApp::BuildCubeGeometry()
 
 		mAllRitems.push_back(std::move(cubeItem));
 	}
+
+	// 동적 파이프라인 초기화 : 런타임 카메라 촬영본이 업로드될 가상 텍스처 리소스 생성
+	D3D12_RESOURCE_DESC texDesc = {};
+	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texDesc.Alignment = 0;
+	texDesc.Width = 1024;       // 모바일 촬영 표준 가상 해상도 가로
+	texDesc.Height = 1024;      // 모바일 촬영 표준 가상 해상도 세로
+	texDesc.DepthOrArraySize = 1;
+	texDesc.MipLevels = 1;
+	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // 표준 RGBA 32비트 포맷
+	texDesc.SampleDesc.Count = 1;
+	texDesc.SampleDesc.Quality = 0;
+	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	texDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
+	device->CreateCommittedResource(
+		&defaultHeapProps,
+		D3D12_HEAP_FLAG_NONE,
+		&texDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&mDynamicCameraTexture));
+
+	// 동적 카메라 텍스처용 16번 SRV 슬롯 핸들 계산 및 생성
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dynamicSrvHandle(mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
+	dynamicSrvHandle.Offset(16, mCbvSrvUavDescriptorSize);
+
+	srvDesc.Format = mDynamicCameraTexture->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mDynamicCameraTexture->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mDynamicCameraTexture.Get(), &srvDesc, dynamicSrvHandle);
 
 	return true;
 }
@@ -813,7 +844,7 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		ReleaseCapture();
 		return 0;
 
-	case WM_MOUSEMOVE: 
+	case WM_MOUSEMOVE:
 		// AR 피벗 : 모바일 싱글 터치 드래그 및 마우스 무브 통합 매핑 영역
 		// 마우스 왼쪽 버튼(또는 모바일 싱글 터치)이 눌린 상태로 드래그할 때
 		if ((wParam & MK_LBUTTON) != 0)
@@ -908,11 +939,11 @@ void DocentApp::Pick(int sx, int sy)
 }
 
 // ⭐ [복구 및 동기화] 유실되었던 Assimp 모델 파일 에셋 로더 본문 함수 세트
-bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes) 
+bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
 	Assimp::Importer importer;
 	const aiScene* scene = importer.ReadFile(filename,
-		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | 
+		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals |
 		aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
 
 	if (!scene) return false;
@@ -939,7 +970,7 @@ void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::ve
 {
 	SubmeshGeometry submesh;
 	submesh.StartIndexLocation = (UINT)indices.size();
-	submesh.MaterialIndex = mesh->mMaterialIndex; 
+	submesh.MaterialIndex = mesh->mMaterialIndex;
 
 	UINT vertexOffset = (UINT)vertices.size();
 
@@ -992,4 +1023,70 @@ void DocentApp::ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::ve
 
 	submesh.IndexCount = (UINT)indices.size() - submesh.StartIndexLocation;
 	submeshes.push_back(submesh);
+}
+
+void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, int height)
+{
+	ID3D12Device* device = mDevice->GetDevice();
+	ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
+
+	// 업로드할 이미지의 행(Row)별 메모리 정렬 크기 계산 (DX12 표준 256바이트 정렬 규칙 반영)
+	UINT64 uploadBufferSize = 0;
+	D3D12_RESOURCE_DESC texDesc = mDynamicCameraTexture->GetDesc();
+	device->GetCopyableFootprints(&texDesc, 0, 1, 0, nullptr, nullptr, nullptr, &uploadBufferSize);
+
+	// 중간 다리 역할을 할 업로드 버퍼 힙 리소스 임시 생성
+	CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+	device->CreateCommittedResource(
+		&uploadHeapProps,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mTextureUploadBuffer));
+
+	// CPU 픽셀 데이터를 업로드 버퍼 메모리에 복사 (Map / Unmap)
+	void* mappedData = nullptr;
+	mTextureUploadBuffer->Map(0, nullptr, &mappedData);
+
+	// 가로 패딩 크기를 고려하여 행 단위로 안전하게 픽셀 복사
+	BYTE* destData = (BYTE*)mappedData;
+	int srcRowPitch = width * 4; // RGBA 4바이트
+	int destRowPitch = (srcRowPitch + 255) & ~255; // 256 정렬 보정
+
+	for (int y = 0; y < height; ++y)
+	{
+		memcpy(destData + (y * destRowPitch), pixelData + (y * srcRowPitch), srcRowPitch);
+	}
+	mTextureUploadBuffer->Unmap(0, nullptr);
+
+	// 리소스 배리어(Resource Barrier): 셰이더 읽기 상태를 복사 목적지(Copy Destination) 상태로 전환
+	CD3DX12_RESOURCE_BARRIER barrierToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
+		mDynamicCameraTexture.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COPY_DEST);
+	cmdList->ResourceBarrier(1, &barrierToCopy);
+
+	// 복사 명령 기록 (Upload Buffer -> Default GPU Texture Memory)
+	CD3DX12_TEXTURE_COPY_LOCATION dst(mDynamicCameraTexture.Get(), 0);
+	CD3DX12_TEXTURE_COPY_LOCATION src(mTextureUploadBuffer.Get(), 0);
+
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+	footprint.Footprint.Width = width;
+	footprint.Footprint.Height = height;
+	footprint.Footprint.Depth = 1;
+	footprint.Footprint.RowPitch = destRowPitch;
+	footprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	src.PlacedFootprint = footprint;
+	src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+	cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+	// 리소스 배리어 원상복구 : 복사 완료 후 다시 셰이더가 렌더링 시 읽을 수 있도록 읽기 상태로 전환
+	CD3DX12_RESOURCE_BARRIER barrierToShader = CD3DX12_RESOURCE_BARRIER::Transition(
+		mDynamicCameraTexture.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	cmdList->ResourceBarrier(1, &barrierToShader);
 }
