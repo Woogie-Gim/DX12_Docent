@@ -57,6 +57,9 @@ bool DocentApp::Initialize()
 	// 큐브의 꼭짓점 데이터 (Geometry) 생성
 	if (!BuildCubeGeometry()) return false;
 
+	// [퍼즐 추가] 퍼즐 조각 전용 정점/인덱스 버퍼 생성
+	if (!BuildPuzzleGeometry()) return false;
+
 	// 가상의 충돌 벽(Blocking Volumes) 세팅
 	mWallCollisions.clear();
 	DirectX::BoundingBox wall;
@@ -321,20 +324,19 @@ bool DocentApp::BuildCubeGeometry()
 	{
 		auto cubeItem = std::make_unique<RenderItem>();
 
-		// i번 액자가 지정된 슬롯의 월드 행렬을 복사해와서 즉시 적용 
 		int targetSlot = mFrameToSlotMap[i];
 		cubeItem->World = mDisplaySlots[targetSlot];
 
-		// 데이터 백업
+		// 개별 아이템 기본 가시성 활성화
+		cubeItem->IsVisible = true;
+
 		cubeItem->OriginalPos = XMFLOAT3(rawData[targetSlot].x, rawData[targetSlot].y, rawData[targetSlot].z);
 		cubeItem->RotationY = rawData[targetSlot].rotY;
-
 		cubeItem->UVOffset = XMFLOAT2(0.0f, 1.0f);
 		cubeItem->UVScale = XMFLOAT2(1.0f, -1.0f);
 		cubeItem->SRVIndexOffset = ((i - 1) % 3) * 4;
 		cubeItem->ObjCBIndex = cbIndex++;
 
-		// 가벽에 걸린 최종 위치를 기준으로 충돌 박스 생성
 		baseBox.Transform(cubeItem->Bounds, XMLoadFloat4x4(&cubeItem->World));
 		cubeItem->Submeshes = frameSubmeshes;
 
@@ -371,6 +373,106 @@ bool DocentApp::BuildCubeGeometry()
 	srvDesc.Format = mDynamicCameraTexture->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = mDynamicCameraTexture->GetDesc().MipLevels;
 	device->CreateShaderResourceView(mDynamicCameraTexture.Get(), &srvDesc, dynamicSrvHandle);
+
+	return true;
+}
+
+bool DocentApp::BuildPuzzleGeometry()
+{
+	ID3D12Device* device = mDevice->GetDevice();
+
+	// 원본 frame.obj 내부의 실제 사진 평면(Canvas) 규격 치수 반영
+	const float halfW = 0.381567f;
+	const float halfH = 0.552712f;
+
+	const float fullW = halfW * 2.0f;
+	const float fullH = halfH * 2.0f;
+	const float cellW = fullW / 3.0f; // 조각 1칸의 가로 실제 크기
+	const float cellH = fullH / 3.0f; // 조각 1칸의 세로 실제 크기
+
+	// 조각 quad를 원점 중심으로 생성. 위치는 전부 World 행렬이 결정.
+	const float hcW = cellW * 0.5f;
+	const float hcH = cellH * 0.5f;
+
+	std::vector<Vertex> pVerts;
+	std::vector<std::uint32_t> pIndices;
+
+	// 9개의 조각이 각각 고유 UV를 가지되, 정점은 동일한 원점 중심 quad
+	for (int row = 0; row < 3; ++row)
+	{
+		for (int col = 0; col < 3; ++col)
+		{
+			// 로컬 사각형 경계 = 원점 중심 (모든 조각 동일)
+			float x0 = -hcW;
+			float x1 = hcW;
+			float yTop = hcH;
+			float yBot = -hcH;
+
+			// 원본 텍스처에서 해당 조각이 가져야 할 칼같은 3x3 UV 오프셋 영역 분할
+			float u0 = col / 3.0f;
+			float u1 = (col + 1) / 3.0f;
+			float v0 = row / 3.0f;
+			float v1 = (row + 1) / 3.0f;
+
+			UINT baseVertex = (UINT)pVerts.size();
+
+			// 시계 방향 정렬 기준 Quad 정점 구조체 조립
+			// planeZ 제거. z=0 로컬 평면, 표면 인출은 World에서 처리.
+			Vertex vTL, vTR, vBR, vBL;
+
+			vTL.Pos = XMFLOAT3(x0, yTop, 0.0f);
+			vTL.Normal = XMFLOAT3(0.0f, 0.0f, 1.0f);
+			vTL.TexC = XMFLOAT2(u0, v0);
+			vTL.Tangent = XMFLOAT3(1.0f, 0.0f, 0.0f);
+
+			vTR.Pos = XMFLOAT3(x1, yTop, 0.0f);
+			vTR.Normal = XMFLOAT3(0.0f, 0.0f, 1.0f);
+			vTR.TexC = XMFLOAT2(u1, v0);
+			vTR.Tangent = XMFLOAT3(1.0f, 0.0f, 0.0f);
+
+			vBR.Pos = XMFLOAT3(x1, yBot, 0.0f);
+			vBR.Normal = XMFLOAT3(0.0f, 0.0f, 1.0f);
+			vBR.TexC = XMFLOAT2(u1, v1);
+			vBR.Tangent = XMFLOAT3(1.0f, 0.0f, 0.0f);
+
+			vBL.Pos = XMFLOAT3(x0, yBot, 0.0f);
+			vBL.Normal = XMFLOAT3(0.0f, 0.0f, 1.0f);
+			vBL.TexC = XMFLOAT2(u0, v1);
+			vBL.Tangent = XMFLOAT3(1.0f, 0.0f, 0.0f);
+
+			pVerts.push_back(vTL);
+			pVerts.push_back(vTR);
+			pVerts.push_back(vBR);
+			pVerts.push_back(vBL);
+
+			// 삼각형 인덱스 링크 연동
+			pIndices.push_back(baseVertex + 0);
+			pIndices.push_back(baseVertex + 1);
+			pIndices.push_back(baseVertex + 2);
+			pIndices.push_back(baseVertex + 0);
+			pIndices.push_back(baseVertex + 2);
+			pIndices.push_back(baseVertex + 3);
+		}
+	}
+
+	mPuzzleVertexByteSize = (UINT)sizeof(Vertex) * (UINT)pVerts.size();
+	mPuzzleIndexByteSize = (UINT)sizeof(std::uint32_t) * (UINT)pIndices.size();
+
+	CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(mPuzzleVertexByteSize);
+	CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(mPuzzleIndexByteSize);
+
+	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mPuzzleVertexBuffer));
+	void* mapped = nullptr;
+	mPuzzleVertexBuffer->Map(0, nullptr, &mapped);
+	memcpy(mapped, pVerts.data(), mPuzzleVertexByteSize);
+	mPuzzleVertexBuffer->Unmap(0, nullptr);
+
+	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mPuzzleIndexBuffer));
+	mapped = nullptr;
+	mPuzzleIndexBuffer->Map(0, nullptr, &mapped);
+	memcpy(mapped, pIndices.data(), mPuzzleIndexByteSize);
+	mPuzzleIndexBuffer->Unmap(0, nullptr);
 
 	return true;
 }
@@ -551,35 +653,61 @@ int DocentApp::Run()
 								XMStoreFloat4x4(&mAllRitems[i]->World, worldMat);
 
 								mAllRitems[i]->Bounds.Center = XMFLOAT3(pos[0], pos[1], pos[2]);
-
-								// 변경 상태를 해당 전시 슬롯 데이터에 실시간 반영
 								int currentSlot = mFrameToSlotMap[i];
 								mDisplaySlots[currentSlot] = mAllRitems[i]->World;
 							}
+
 							// 해당 작품 정면 포커싱 워프 버튼
 							ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.4f, 0.4f, 1.0f));
 							if (ImGui::Button("Focus Camera to This Artwork"))
 							{
 								float angleRadian = XMConvertToRadians(mAllRitems[i]->RotationY);
 
-								float lookX = sinf(angleRadian);
-								float lookZ = cosf(angleRadian);
+								// 가벽 양면 대칭 좌표 정렬을 위한 삼각함수 법선 부호 대칭 반전
+								float frontX = -sinf(angleRadian);
+								float frontZ = -cosf(angleRadian);
 
-								// 액자 정면 관람 위치 목적지 계산
+								// 액자가 바라보는 정면 바깥 방향으로 시야 거리 2.2f 확보 배치
 								float offsetDistance = 2.2f;
-								mTargetCameraPos.x = mAllRitems[i]->World._41 + (lookX * offsetDistance);
-								mTargetCameraPos.y = mAllRitems[i]->World._42; // 액자 고유 슬롯 y축 높이 추출 동기화
-								mTargetCameraPos.z = mAllRitems[i]->World._43 + (lookZ * offsetDistance);
+								mTargetCameraPos.x = mAllRitems[i]->World._41 + (frontX * offsetDistance);
+								mTargetCameraPos.y = mAllRitems[i]->World._42;
+								mTargetCameraPos.z = mAllRitems[i]->World._43 + (frontZ * offsetDistance);
 
-								// 카메라가 액자와 마주 볼 최종 목표 절대 각도(Yaw) 연산
-								XMVECTOR camLook = XMVectorSet(-lookX, 0.0f, -lookZ, 0.0f);
-								camLook = XMVector3Normalize(camLook);
-								mTargetCameraRotY = atan2f(XMVectorGetX(camLook), XMVectorGetZ(camLook));
+								// 카메라도 등을 돌려 액자 중심을 정면으로 온전히 응시하도록 회전축 매핑
+								mTargetCameraRotY = atan2f(-frontX, -frontZ);
 
-								// 자동 이동 보간 플래그 활성화 (Update에서 제어 시작)
 								mIsCameraMoving = true;
 							}
 							ImGui::PopStyleColor();
+
+							// Focus 버튼 바로 밑으로 개별 퍼즐 제어권 이식
+							ImGui::Spacing();
+							if (mPuzzleState == EPuzState::Ready)
+							{
+								std::string puzBtnName = "Slice This Frame #" + std::to_string(i) + " (Game Start)";
+								ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.4f, 0.0f, 1.0f));
+								if (ImGui::Button(puzBtnName.c_str(), ImVec2(-1, 30)))
+								{
+									GenerateSingleImagePuzzle(i);
+								}
+								ImGui::PopStyleColor();
+							}
+							else if (mPuzzleState == EPuzState::Playing && mActivePuzzleTargetIndex == (int)i)
+							{
+								ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Status: Sliced & Playing...");
+								if (ImGui::Button("Give Up & Restore", ImVec2(-1, 30)))
+								{
+									ResetSingleImagePuzzle();
+								}
+							}
+							else if (mPuzzleState == EPuzState::Completed && mActivePuzzleTargetIndex == (int)i)
+							{
+								ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "PUZZLE SOLVED COMPLETELY!");
+								if (ImGui::Button("Restore Gallery Mode", ImVec2(-1, 30)))
+								{
+									ResetSingleImagePuzzle();
+								}
+							}
 
 							ImGui::TreePop();
 						}
@@ -613,13 +741,23 @@ int DocentApp::Run()
 			// SRV 힙의 시작 GPU 핸들 캐싱
 			CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuDescriptor(mDevice->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 
-			// 개별 물체 렌더링 루프
+			// 개별 물체 렌더링 루프 (일반 갤러리 및 액자 축)
 			for (size_t i = 0; i < mAllRitems.size(); ++i)
 			{
 				auto& ri = mAllRitems[i];
+				if (!ri->IsVisible) continue;
 
 				InstanceData objData;
-				XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
+
+				// 현재 퍼즐 타겟인 원본 액자는 잔상 방지를 위해 상수 버퍼 단계에서 렌더링 크기 소멸
+				if (mPuzzleState == EPuzState::Playing && mActivePuzzleTargetIndex == (int)i)
+				{
+					XMStoreFloat4x4(&objData.World, XMMatrixScaling(0.0f, 0.0f, 0.0f));
+				}
+				else
+				{
+					XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
+				}
 
 				objData.UVOffset = ri->UVOffset;
 				objData.UVScale = ri->UVScale;
@@ -629,20 +767,56 @@ int DocentApp::Run()
 
 				cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
 
-				// 서브메쉬 순회하며 개별 렌더링
 				for (const auto& submesh : ri->Submeshes)
 				{
-					// MaterialIndex(0 또는 1)만큼 핸들 이동
 					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
-					// 아이템의 시작 오프셋에 서브메쉬의 재질 번호를 더해 최종 텍스처 슬롯 결정
 					texHandle.Offset(ri->SRVIndexOffset + (submesh.MaterialIndex * 4), mCbvSrvUavDescriptorSize);
-
-					// 해당 서브메쉬용 텍스처 바인딩
 					cmdList->SetGraphicsRootDescriptorTable(2, texHandle);
 
-					// 그리기 명령
 					cmdList->DrawIndexedInstanced(submesh.IndexCount, 1, submesh.StartIndexLocation, 0, 0);
 				}
+			}
+
+			// 퍼즐 게임 플레이 중일 때 바닥에 분쇄된 9개 동적 조각 추가 렌더링 루프
+			if (mPuzzleState == EPuzState::Playing)
+			{
+				// 인덱스 카운트 런타임 탈락 원천 차단 보정
+				mPuzzlePieceIndexCount = 6;
+
+				// 조각 전용 정점 및 인덱스 버퍼 파이프라인 교체 바인딩
+				D3D12_VERTEX_BUFFER_VIEW pvbv = { mPuzzleVertexBuffer->GetGPUVirtualAddress(), mPuzzleVertexByteSize, (UINT)sizeof(Vertex) };
+				cmdList->IASetVertexBuffers(0, 1, &pvbv);
+				D3D12_INDEX_BUFFER_VIEW pibv = { mPuzzleIndexBuffer->GetGPUVirtualAddress(), mPuzzleIndexByteSize, DXGI_FORMAT_R32_UINT };
+				cmdList->IASetIndexBuffer(&pibv);
+
+				for (size_t p = 0; p < mDynamicPieces.size(); ++p)
+				{
+					auto& ri = mDynamicPieces[p].RenderItemPtr;
+
+					InstanceData objData;
+					XMStoreFloat4x4(&objData.World, XMMatrixTranspose(XMLoadFloat4x4(&ri->World)));
+					objData.UVOffset = ri->UVOffset;
+					objData.UVScale = ri->UVScale;
+
+					// 고정 메인 오브젝트 버퍼 공간과 충돌 방지 마진 추가
+					UINT objOffset = (ri->ObjCBIndex + 50) * instanceSize;
+					memcpy((BYTE*)mCBVoidPtr + objOffset, &objData, sizeof(InstanceData));
+
+					cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
+
+					// 선택된 타겟 액자의 원본 리소스 텍스처 셰이더 바인딩
+					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
+					texHandle.Offset(ri->SRVIndexOffset, mCbvSrvUavDescriptorSize);
+					cmdList->SetGraphicsRootDescriptorTable(2, texHandle);
+
+					// [해결] 실시간으로 배정된 단일 조각 인덱스 오프셋 영역 스위칭 그리기 격발
+					UINT startIndex = (UINT)p * mPuzzlePieceIndexCount;
+					cmdList->DrawIndexedInstanced(mPuzzlePieceIndexCount, 1, startIndex, 0, 0);
+				}
+
+				// 다음 프레임 연산을 위한 메인 버퍼 원상 복구 교체
+				cmdList->IASetVertexBuffers(0, 1, &vbv);
+				cmdList->IASetIndexBuffer(&ibv);
 			}
 
 			// ImGui 실제 렌더링 명령
@@ -790,6 +964,7 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 
 		// 마우스를 클릭했을 때 피킹(광선 쏘기) 함수 호출
+		// [퍼즐 수정] 퍼즐 플레이 중에는 Pick 내부에서 조각만 골라잡도록 분기 처리됨
 		Pick(LOWORD(lParam), HIWORD(lParam));
 
 		// 마우스 클릭 시 현재 좌표 기억
@@ -797,6 +972,7 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		mLastMousePos.y = HIWORD(lParam);
 		SetCapture(hwnd);
 		return 0;
+
 	case WM_RBUTTONDOWN:
 		// 우클릭은 카메라 회전용으로 사용
 		mLastMousePos.x = LOWORD(lParam);
@@ -818,19 +994,33 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			XMVECTOR vectorDist = XMVector3Length(XMVectorSubtract(currentPos, targetPos));
 			float dist = XMVectorGetX(vectorDist);
 
-			// 스냅 임계값(Threshold) 확인: 거리가 0.3f 이내라면 자석처럼
-			float snapThreshold = 0.3f;
+			// 스냅 임계값: 조각 간격(cellW≈0.25)보다 작게 잡아 옆칸 오스냅 방지
+			float snapThreshold = 0.15f;
 
 			if (dist < snapThreshold)
 			{
-				// 월드 행렬을 정답 위치로 덮어쓰기 (회전은 없다고 가정)
-				XMMATRIX snapWorld = XMMatrixTranslation(mPickedItem->OriginalPos.x, mPickedItem->OriginalPos.y, mPickedItem->OriginalPos.z);
+				XMMATRIX snapWorld = XMMatrixRotationY(XMConvertToRadians(mPickedItem->RotationY)) *
+					XMMatrixTranslation(mPickedItem->OriginalPos.x, mPickedItem->OriginalPos.y, mPickedItem->OriginalPos.z);
 				XMStoreFloat4x4(&mPickedItem->World, snapWorld);
 
 				// 충돌 박스도 정답 위치로 강제 이동
 				mPickedItem->Bounds.Center = mPickedItem->OriginalPos;
 
 				OutputDebugStringA("퍼즐 조각이 정답 위치에 맞았습니다!\n");
+
+				// [퍼즐 추가] 어떤 동적 조각이 붙었는지 찾아 스냅 플래그 표시 후 완성 검사
+				if (mPuzzleState == EPuzState::Playing)
+				{
+					for (auto& piece : mDynamicPieces)
+					{
+						if (piece.RenderItemPtr.get() == mPickedItem)
+						{
+							piece.IsSnapped = true;
+							break;
+						}
+					}
+					CheckPuzzleCompletion();
+				}
 			}
 
 			// 큐브 놓기 (초기화)
@@ -859,12 +1049,18 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				float scaleDx = dx * 0.01f;
 				float scaleDy = dy * 0.01f;
 
-				float newX = mPickedItem->World._41 + scaleDx;
+				//  액자 평면(right/up) 좌표계로 드래그 매핑.
+				// 회전된 액자(rotY=90/270)에서도 화면 좌우가 캔버스 평면을 따라가도록.
+				float angleRadian = XMConvertToRadians(mPickedItem->RotationY);
+				float rightX = cosf(angleRadian);
+				float rightZ = -sinf(angleRadian);
+
+				float newX = mPickedItem->World._41 + scaleDx * rightX;
 				float newY = mPickedItem->World._42 - scaleDy; // 화면 dy 반전 적용
-				float newZ = mPickedItem->World._43;
+				float newZ = mPickedItem->World._43 + scaleDx * rightZ;
 
 				XMMATRIX scaleMat = XMMatrixScaling(1.0f, 1.0f, 1.0f);
-				XMMATRIX rotMat = XMMatrixRotationY(XMConvertToRadians(mPickedItem->RotationY));
+				XMMATRIX rotMat = XMMatrixRotationY(angleRadian);
 				XMMATRIX transMat = XMMatrixTranslation(newX, newY, newZ);
 
 				XMStoreFloat4x4(&mPickedItem->World, scaleMat * rotMat * transMat);
@@ -918,6 +1114,31 @@ void DocentApp::Pick(int sx, int sy)
 	mPickedItem = nullptr;
 	float minDist = FLT_MAX;
 
+	// 퍼즐 플레이 중일 때는 일반 액자가 아닌 동적 조각만 피킹 대상으로 삼는다
+	if (mPuzzleState == EPuzState::Playing)
+	{
+		for (auto& piece : mDynamicPieces)
+		{
+			auto* item = piece.RenderItemPtr.get();
+			float dist = 0.0f;
+			if (item->Bounds.Intersects(rayOrigin, rayDir, dist))
+			{
+				if (dist < minDist)
+				{
+					minDist = dist;
+					mPickedItem = item;
+				}
+			}
+		}
+
+		if (mPickedItem != nullptr)
+		{
+			OutputDebugStringA("퍼즐 조각 클릭 성공! (Raycast Hit!)\n");
+		}
+		return;
+	}
+
+	// 일반 모드: 전시된 액자들을 피킹
 	for (size_t i = 1; i < mAllRitems.size(); ++i)
 	{
 		auto& item = mAllRitems[i];
@@ -1089,4 +1310,125 @@ void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, 
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	cmdList->ResourceBarrier(1, &barrierToShader);
+}
+
+void DocentApp::GenerateSingleImagePuzzle(int targetIndex)
+{
+	mDynamicPieces.clear();
+	mActivePuzzleTargetIndex = targetIndex;
+
+	auto& targetFrame = mAllRitems[targetIndex];
+
+	// 파이프라인 데이터 유실 방지를 위한 가시성 유지
+	// (렌더 루프가 퍼즐 타겟을 World 스케일 0으로 죽이므로 true 유지 OK)
+	targetFrame->IsVisible = true;
+
+	DirectX::XMFLOAT3 centerPos = targetFrame->OriginalPos;
+	float rotY = targetFrame->RotationY;
+	int pieceCBIndex = 0;
+
+	// 인덱스 카운트 값 강제 보정 (0 빌드 방지)
+	mPuzzlePieceIndexCount = 6;
+
+	float angleRadian = XMConvertToRadians(rotY);
+
+	// 액자 로컬 축 -> 월드 축 (RotationY 적용)
+	// 로컬 +X(right), 로컬 +Z(front)
+	float rightX = cosf(angleRadian);
+	float rightZ = -sinf(angleRadian);
+	float frontX = sinf(angleRadian);
+	float frontZ = cosf(angleRadian);
+
+	// Quad 1칸의 실제 크기 데이터 추출
+	float cellW = (0.381567f * 2.0f) / 3.0f;
+	float cellH = (0.552712f * 2.0f) / 3.0f;
+
+	// 캔버스 실제 표면 z=0.0321 바로 앞 (frame.obj 기준, Z-Fighting 방지)
+	float surfaceZ = 0.033f;
+
+	for (int idx = 0; idx < 9; ++idx)
+	{
+		// 인덱스 -> 격자(row/col). BuildPuzzleGeometry의 인덱스 순서와 일치(row*3+col).
+		int row = idx / 3;
+		int col = idx % 3;
+
+		// 캔버스 평면 위 이 조각 칸의 로컬 중심 (원점=캔버스 중심)
+		// col 0..2 = 좌->우, row 0..2 = 상->하 (UV v0=row/3과 동일 방향)
+		float localX = (col - 1) * cellW;   // -cellW, 0, +cellW
+		float localY = (1 - row) * cellH;   // +cellH, 0, -cellH (위가 row 0)
+
+		// 정답 월드 위치 = 중심 + localX*right + localY*up + surfaceZ*front
+		float correctX = centerPos.x + localX * rightX + frontX * surfaceZ;
+		float correctY = centerPos.y + localY;
+		float correctZ = centerPos.z + localX * rightZ + frontZ * surfaceZ;
+
+		auto pieceItem = std::make_unique<RenderItem>();
+
+		// 퍼즐 버퍼 플래그 세팅 및 원본 텍스처 인덱스 동기화
+		pieceItem->UsePuzzleBuffer = true;
+		pieceItem->SRVIndexOffset = targetFrame->SRVIndexOffset;
+		pieceItem->RotationY = rotY;
+		pieceItem->IsVisible = true;
+		pieceItem->ObjCBIndex = pieceCBIndex++;
+
+		pieceItem->UVOffset = DirectX::XMFLOAT2(0.0f, 0.0f);
+		pieceItem->UVScale = DirectX::XMFLOAT2(1.0f, 1.0f);
+
+		// 정답 위치 = 조각별 고유 격자 좌표 (스냅 판정 기준)
+		pieceItem->OriginalPos = XMFLOAT3(correctX, correctY, correctZ);
+
+		// 셔플: 정답에서 충분히 떨어뜨려 캔버스 주변에 흩뿌림
+		float shuffleRange = 0.6f;
+		float jitterX = (((float)rand() / RAND_MAX) * 2.0f - 1.0f) * shuffleRange;
+		float jitterY = (((float)rand() / RAND_MAX) * 2.0f - 1.0f) * shuffleRange;
+
+		// 시작 위치도 액자 평면(right/up) 좌표계 위, 표면보다 살짝 더 앞
+		float startX = centerPos.x + (jitterX * rightX) + (frontX * (surfaceZ + 0.02f));
+		float startY = centerPos.y + jitterY;
+		float startZ = centerPos.z + (jitterX * rightZ) + (frontZ * (surfaceZ + 0.02f));
+
+		// 축 정렬 순서 준수: 회전 후 최종 월드 좌표로 평행이동
+		XMMATRIX startWorld = XMMatrixRotationY(angleRadian) * XMMatrixTranslation(startX, startY, startZ);
+		XMStoreFloat4x4(&pieceItem->World, startWorld);
+
+		// 개별 조각 피킹 마우스 충돌체 범위 설정
+		pieceItem->Bounds.Center = XMFLOAT3(startX, startY, startZ);
+		pieceItem->Bounds.Extents = XMFLOAT3(cellW * 0.5f, cellH * 0.5f, 0.05f);
+
+		PuzzlePiece piece;
+		piece.RenderItemPtr = std::move(pieceItem);
+		piece.CorrectPos = XMFLOAT3(correctX, correctY, correctZ);
+		piece.IsSnapped = false;
+		mDynamicPieces.push_back(std::move(piece));
+	}
+	mPuzzleState = EPuzState::Playing;
+}
+
+// 9개 조각이 모두 정답에 붙었는지 검사
+void DocentApp::CheckPuzzleCompletion()
+{
+	if (mDynamicPieces.empty()) return;
+
+	for (const auto& piece : mDynamicPieces)
+	{
+		if (!piece.IsSnapped) return; // 하나라도 안 붙었으면 미완성
+	}
+
+	// 전부 붙었으면 완료 상태 전환
+	mPuzzleState = EPuzState::Completed;
+	OutputDebugStringA("퍼즐 완성! 모든 조각이 제자리에 맞춰졌습니다.\n");
+}
+
+void DocentApp::ResetSingleImagePuzzle()
+{
+	// 게임 종료 또는 포기 시 원본 액자 다시 화면에 렌더링 활성화
+	if (mActivePuzzleTargetIndex != -1)
+	{
+		mAllRitems[mActivePuzzleTargetIndex]->IsVisible = true;
+	}
+
+	// 할당되었던 동적 퍼즐 조각 메모리 전면 해제 및 상태 초기화
+	mDynamicPieces.clear();
+	mActivePuzzleTargetIndex = -1;
+	mPuzzleState = EPuzState::Ready;
 }
