@@ -61,7 +61,7 @@ struct RenderItem
 		0.0f, 0.0f, 0.0f, 1.0f
 	};
 
-	// 객체 가시성 플래그 (퍼즐 시작 시 원본 숨김용)
+	// 객체 가시성 플래그
 	bool IsVisible = true;
 
 	// 상수 버퍼 인덱스
@@ -73,7 +73,7 @@ struct RenderItem
 	// 큐브를 감싸는 3D 투명 박스
 	DirectX::BoundingBox Bounds;
 
-	// 퍼즐 조각의 원래 위치
+	// 원본 배치 위치 백업
 	DirectX::XMFLOAT3 OriginalPos = { 0.0f, 0.0f, 0.0f };
 
 	// 이 물체가 가진 여러 개의 부분 메쉬 리스트
@@ -85,9 +85,8 @@ struct RenderItem
 	// 개별 물체의 Y축 회전 각도
 	float RotationY = 0.0f;
 
-	// [퍼즐 추가] 이 아이템이 퍼즐 전용 정점/인덱스 버퍼를 쓰는지 여부
-	// true면 메인 버퍼(mVertexBuffer) 대신 퍼즐 버퍼(mPuzzleVB/IB)를 바인딩
-	bool UsePuzzleBuffer = false;
+	// 도센트 추가, 해당 작품 고유의 큐레이팅 설명 가이드 텍스트
+	std::string ArtworkDescription;
 };
 
 class DocentApp
@@ -186,6 +185,9 @@ private:
 	void ProcessNode(aiNode* node, const aiScene* scene, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
 	void ProcessMesh(aiMesh* mesh, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes);
 
+	// 도센트 추가, 현재 화면에 팝업 창으로 상세 띄워줄 활성 액자의 인덱스 (-1은 숨김)
+	int mActiveDocentTargetIndex = -1;
+
 	// 여러 개의 가상 벽을 담을 리스트 추가
 	std::vector<DirectX::BoundingBox> mWallCollisions;
 
@@ -207,30 +209,4 @@ private:
 
 	// 실시간 이미지 버퍼를 받아 GPU 텍스처 메모리를 갱신하는 동적 업로드 함수
 	void UploadCameraTextureRuntime(unsigned char* pixelData, int width, int height);
-
-	// 퍼즐 게임의 실시간 진행 상태 플래그 열거형
-	enum class EPuzState { Ready, Playing, Completed };
-	EPuzState mPuzzleState = EPuzState::Ready;
-
-	// 현재 퍼즐 게임이 가동 중인 원본 액자의 인덱스 (-1은 진행 안 함)
-	int mActivePuzzleTargetIndex = -1;
-
-	// 동적으로 생성되어 바닥에 흩어질 9개의 가상 퍼즐 조각 데이터
-	struct PuzzlePiece {
-		std::unique_ptr<RenderItem> RenderItemPtr; // 동적 메모리 관리용 ptr
-		DirectX::XMFLOAT3 CorrectPos;              // 맞춰야 할 가벽 정답 위치
-		bool IsSnapped = false;                    // 퍼즐 추가 이 조각이 정답에 붙었는지 여부
-	};
-	std::vector<PuzzlePiece> mDynamicPieces;
-
-	// [퍼즐 추가] 퍼즐 조각 전용 정점/인덱스 버퍼를 생성하는 함수
-	// 3x3 격자로 9개의 작은 quad를 만들고, 각 조각에 0~1 정규 UV를 부여
-	bool BuildPuzzleGeometry();
-
-	// [퍼즐 추가] 9조각이 모두 정답에 붙었는지 검사하고 완료 상태로 전환
-	void CheckPuzzleCompletion();
-
-	// 특정 액자를 타겟으로 삼는 퍼즐 생성 및 리셋 함수
-	void GenerateSingleImagePuzzle(int targetIndex);
-	void ResetSingleImagePuzzle();
 };
