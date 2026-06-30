@@ -212,7 +212,7 @@ bool DocentApp::BuildCubeGeometry()
 	// 상수 버퍼 메모리 할당
 	UINT instanceSize = (sizeof(InstanceData) + 255) & ~255;
 	UINT passSize = (sizeof(PassConstants) + 255) & ~255;
-	UINT totalBufferSize = (instanceSize * 100) + passSize;
+	UINT totalBufferSize = (instanceSize * 20) + passSize;
 	CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBufferSize);
 
 	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mConstantBuffer));
@@ -417,7 +417,7 @@ int DocentApp::Run()
 			passConstants.LightDir = XMFLOAT3(0.5f, -1.0f, -0.2f);
 			passConstants.LightColor = XMFLOAT3(1.0f, 0.95f, 0.88f);
 
-			UINT passOffset = instanceSize * 100;
+			UINT passOffset = instanceSize * 20;
 			memcpy((BYTE*)mCBVoidPtr + passOffset, &passConstants, sizeof(PassConstants));
 
 			// 렌더 타겟 세팅 및 화면 지우기 (파란색 배경)
@@ -438,6 +438,14 @@ int DocentApp::Run()
 
 			ImGui::Text("My Pos: X: %.1f / Y: %.1f", passConstants.CameraPos.x, passConstants.CameraPos.y);
 			ImGui::Text("        Z: %.1f", passConstants.CameraPos.z);
+			ImGui::Separator();
+
+			// 실시간 성능 모니터링 데이터 시각화
+			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "[Performance Monitor]");
+
+			float currentFps = 1.0f / mTimer.DeltaTime();
+			ImGui::Text("FPS: %.1f f/s", currentFps);
+			ImGui::Text("Frame Time: %.3f ms", mTimer.DeltaTime() * 1000.0f);
 			ImGui::Separator();
 
 			// 데이터 기반 실시간 큐레이팅 및 배치 관리 툴 (10개 지원 자동화)
@@ -601,6 +609,31 @@ int DocentApp::Run()
 				}
 			}
 			ImGui::End();
+
+			// 도센트 추가 : 활성화된 작품 설명이 있다면 우측에 독립 윈도우 창 팝업
+			if (mActiveDocentTargetIndex >= 1 && mActiveDocentTargetIndex < (int)mAllRitems.size())
+			{
+				ImGui::SetNextWindowPos(ImVec2(470.0f, 10.0f), ImGuiCond_FirstUseEver);
+				ImGui::SetNextWindowSize(ImVec2(400.0f, 250.0f), ImGuiCond_FirstUseEver);
+
+				std::string windowTitle = "Docent Audio Guide - Frame #" + std::to_string(mActiveDocentTargetIndex);
+				ImGui::Begin(windowTitle.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+
+				ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), "Artwork Curation Script");
+				ImGui::Separator();
+				ImGui::Spacing();
+
+				ImGui::TextWrapped(mAllRitems[mActiveDocentTargetIndex]->ArtworkDescription.c_str());
+
+				ImGui::Spacing();
+				ImGui::Separator();
+				if (ImGui::Button("Close Guide", ImVec2(-1, 30)))
+				{
+					mActiveDocentTargetIndex = -1;
+				}
+
+				ImGui::End();
+			}
 
 			ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
 
@@ -838,21 +871,6 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			// 두 위치 사이의 거리(Distance) 계산
 			XMVECTOR vectorDist = XMVector3Length(XMVectorSubtract(currentPos, targetPos));
 			float dist = XMVectorGetX(vectorDist);
-
-			// 스냅 임계값: 조각 간격(cellW≈0.25)보다 작게 잡아 옆칸 오스냅 방지
-			float snapThreshold = 0.15f;
-
-			if (dist < snapThreshold)
-			{
-				XMMATRIX snapWorld = XMMatrixRotationY(XMConvertToRadians(mPickedItem->RotationY)) *
-					XMMatrixTranslation(mPickedItem->OriginalPos.x, mPickedItem->OriginalPos.y, mPickedItem->OriginalPos.z);
-				XMStoreFloat4x4(&mPickedItem->World, snapWorld);
-
-				// 충돌 박스도 정답 위치로 강제 이동
-				mPickedItem->Bounds.Center = mPickedItem->OriginalPos;
-
-				OutputDebugStringA("퍼즐 조각이 정답 위치에 맞았습니다!\n");
-			}
 
 			// 큐브 놓기 (초기화)
 			mPickedItem = nullptr;

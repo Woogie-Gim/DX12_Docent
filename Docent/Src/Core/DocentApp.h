@@ -142,16 +142,6 @@ private:
 	// 큐브 데이터 생성 함수
 	bool BuildCubeGeometry();
 
-	// [퍼즐 추가] 퍼즐 조각 전용 정점/인덱스 버퍼 (3x3 = 9개 quad)
-	// 원본 canvas의 UV가 0.85로 뭉쳐 있어 분할이 불가능하므로,
-	// 0~1 정규 UV를 가진 조각 quad를 코드에서 직접 생성해 별도 버퍼로 보관
-	Microsoft::WRL::ComPtr<ID3D12Resource> mPuzzleVertexBuffer;
-	Microsoft::WRL::ComPtr<ID3D12Resource> mPuzzleIndexBuffer;
-	UINT mPuzzleVertexByteSize = 0;
-	UINT mPuzzleIndexByteSize = 0;
-	// 9개 조각 각각의 인덱스 시작 위치/개수 (조각 1개당 quad = 인덱스 6개)
-	UINT mPuzzlePieceIndexCount = 6;
-
 	// 텍스처 리소스
 	ComPtr<ID3D12Resource> mWoodTexture;
 	ComPtr<ID3D12Resource> mMemeTexture;
