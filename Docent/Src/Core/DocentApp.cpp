@@ -682,9 +682,10 @@ int DocentApp::Run()
 				{
 					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
 
-					// 1번 가상 액자일 때만 우리가 뚫어둔 16번 동적 카메라 SRV 테이블 슬롯 강제 연동 바인딩
-					if (i == 1 && submesh.MaterialIndex == 0)
+					// MaterialIndex를 1(사진 평면)로 교체하여 캔버스만 비워두기
+					if (i == 1 && submesh.MaterialIndex == 1)
 					{
+						// 아직 데이터가 복사되지 않은 빈 텍스처 리소스를 바인딩하여 까만 대기 화면 연출
 						texHandle.Offset(16, mCbvSrvUavDescriptorSize);
 					}
 					else
