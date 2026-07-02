@@ -29,6 +29,9 @@ DocentApp::DocentApp(HINSTANCE hInstance) : mhAppInst(hInstance)
 // 소멸자
 DocentApp::~DocentApp()
 {
+	// AR 네트워크 : 스레드 종료 및 소켓 자원 해제
+	CleanupNetwork();
+
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
@@ -162,6 +165,12 @@ bool DocentApp::InitMainWindow()
 	// 창 출력
 	ShowWindow(mhMainWnd, SW_SHOW);
 	UpdateWindow(mhMainWnd);
+
+	// AR 네트워크 : 소켓 서버 초기화 및 백그라운드 수신 스레드 가동
+	if (!InitNetwork())
+	{
+		OutputDebugStringA("네트워크 초기화 실패!\n");
+	}
 
 	return true;
 }
@@ -1137,4 +1146,94 @@ void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, 
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	cmdList->ResourceBarrier(1, &barrierToShader);
+}
+
+// 소켓 서버 초기화 및 스레드 생성
+bool DocentApp::InitNetwork()
+{
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return false;
+
+	mListenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (mListenSocket == INVALID_SOCKET) return false;
+
+	sockaddr_in serverAddr = {};
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	serverAddr.sin_port = htons(9000); // 통신 포트 9000번 개방
+
+	if (bind(mListenSocket, (SOCKADDR*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) return false;
+	if (listen(mListenSocket, SOMAXCONN) == SOCKET_ERROR) return false;
+
+	mIsNetworkRunning = true;
+	mNetworkThread = std::thread(&DocentApp::NetworkThreadProc, this);
+
+	OutputDebugStringA("소켓 서버 가동 완료. 포트 9000번 대기 중...\n");
+	return true;
+}
+
+// 백그라운드 수신 스레드 (렌더링과 독립적으로 무한 루프 구동)
+void DocentApp::NetworkThreadProc()
+{
+	while (mIsNetworkRunning)
+	{
+		// 스마트폰 클라이언트 연결 대기 (Blocking 함수지만 스레드가 분리되어 메인 화면은 멈추지 않음)
+		sockaddr_in clientAddr;
+		int clientAddrLen = sizeof(clientAddr);
+		mClientSocket = accept(mListenSocket, (SOCKADDR*)&clientAddr, &clientAddrLen);
+
+		if (mClientSocket != INVALID_SOCKET)
+		{
+			OutputDebugStringA("스마트폰 클라이언트 접속 성공!\n");
+
+			char recvBuffer[4096];
+			while (mIsNetworkRunning)
+			{
+				int bytesReceived = recv(mClientSocket, recvBuffer, sizeof(recvBuffer), 0);
+				if (bytesReceived > 0)
+				{
+					// TODO: 수신된 바이트 배열에서 이미지 크기와 자이로 센서 데이터를 파싱하는 로직 구현 예정
+
+					// 데이터 갱신 시 Mutex로 잠그고 공유 버퍼에 안전하게 저장
+					std::lock_guard<std::mutex> lock(mDataMutex);
+					// mSharedQx = ... (파싱 데이터)
+					// mSharedImageBuffer = ... (파싱 데이터)
+					// mIsNewImageAvailable = true;
+				}
+				else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR)
+				{
+					OutputDebugStringA("스마트폰 클라이언트 연결 끊김.\n");
+					break;
+				}
+			}
+			closesocket(mClientSocket);
+			mClientSocket = INVALID_SOCKET;
+		}
+	}
+}
+
+// 스레드 및 소켓 완전 종료 관리
+void DocentApp::CleanupNetwork()
+{
+	mIsNetworkRunning = false;
+
+	// 블로킹 상태의 accept를 깨우기 위해 리슨 소켓 강제 닫기
+	if (mListenSocket != INVALID_SOCKET)
+	{
+		closesocket(mListenSocket);
+		mListenSocket = INVALID_SOCKET;
+	}
+
+	if (mClientSocket != INVALID_SOCKET)
+	{
+		closesocket(mClientSocket);
+		mClientSocket = INVALID_SOCKET;
+	}
+
+	if (mNetworkThread.joinable())
+	{
+		mNetworkThread.join();
+	}
+
+	WSACleanup();
 }

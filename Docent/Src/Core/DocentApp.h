@@ -13,6 +13,12 @@
 #include "WICTextureLoader.h"		// 텍스처 로더
 #include "ResourceUploadBatch.h"	// 업로드 배치
 #include <DirectXCollision.h>		// 충돌 처리를 위한 라이브러리
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib") // WinSock 라이브러리 링크
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 // Assimp 구조체 전방 선언
 struct aiNode;
@@ -199,4 +205,23 @@ private:
 
 	// 실시간 이미지 버퍼를 받아 GPU 텍스처 메모리를 갱신하는 동적 업로드 함수
 	void UploadCameraTextureRuntime(unsigned char* pixelData, int width, int height);
+
+	// AR 네트워크 : 소켓 통신 및 스레드 동기화 변수
+	bool InitNetwork();
+	void CleanupNetwork();
+	void NetworkThreadProc();
+
+	SOCKET mListenSocket = INVALID_SOCKET;
+	SOCKET mClientSocket = INVALID_SOCKET;
+
+	std::thread mNetworkThread;
+	std::atomic<bool> mIsNetworkRunning = false;
+
+	// 메인 스레드와 네트워크 스레드가 데이터를 안전하게 교환하기 위한 자원 잠금 장치
+	std::mutex mDataMutex;
+
+	// 스마트폰에서 수신받아 공유할 최신 데이터 버퍼
+	std::vector<unsigned char> mSharedImageBuffer;
+	float mSharedQx = 0.0f, mSharedQy = 0.0f, mSharedQz = 0.0f, mSharedQw = 1.0f;
+	bool mIsNewImageAvailable = false;
 };
