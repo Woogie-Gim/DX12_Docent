@@ -1,7 +1,10 @@
 #pragma once
 
 #define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib") // WinSock 라이브러리 링크
 #include <windows.h>
 #include <string>
 #include <memory>
@@ -14,8 +17,6 @@
 #include "ResourceUploadBatch.h"	// 업로드 배치
 #include <DirectXCollision.h>		// 충돌 처리를 위한 라이브러리
 #include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib") // WinSock 라이브러리 링크
 #include <thread>
 #include <mutex>
 #include <atomic>
