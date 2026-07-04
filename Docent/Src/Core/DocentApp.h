@@ -201,9 +201,6 @@ private:
 	// 모바일 AR 트래킹 센서 활성화 여부를 제어하는 플래그 변수
 	bool mIsMobileSensorActive = false;
 
-	// 플랫폼 하드웨어 센서로부터 자이로 쿼터니언 값을 수신하는 인터페이스 함수
-	void GetMobileSensorQuaternion(float* x, float* y, float* z, float* w);
-
 	// 실시간 이미지 버퍼를 받아 GPU 텍스처 메모리를 갱신하는 동적 업로드 함수
 	void UploadCameraTextureRuntime(unsigned char* pixelData, int width, int height);
 
@@ -225,4 +222,7 @@ private:
 	std::vector<unsigned char> mSharedImageBuffer;
 	float mSharedQx = 0.0f, mSharedQy = 0.0f, mSharedQz = 0.0f, mSharedQw = 1.0f;
 	bool mIsNewImageAvailable = false;
+
+	// 수신된 자이로 회전값을 DirectX SIMD 쿼터니언 벡터로 변환 반환
+	DirectX::XMVECTOR GetMobileSensorQuaternion();
 };

@@ -733,7 +733,7 @@ void DocentApp::Update(const Timer& timer)
 		{
 			// 플랫폼 센서 매니저로부터 최신 자이로 쿼터니언 데이터 수신 (가상 데이터)
 			float qx = 0.0f, qy = 0.0f, qz = 0.0f, qw = 1.0f;
-			GetMobileSensorQuaternion(&qx, &qy, &qz, &qw);
+			DirectX::XMVECTOR mobileQuat = GetMobileSensorQuaternion();
 
 			// 디바이스 회전값과 카메라 행렬 완전 동기화
 			mCamera.UpdateRotationFromQuaternion(qx, qy, qz, qw);
@@ -825,14 +825,13 @@ void DocentApp::Update(const Timer& timer)
 	mCamera.UpdateViewMatrix();
 }
 
-//  플랫폼 센서 값 연동 함수 임시 본문
-void DocentApp::GetMobileSensorQuaternion(float* x, float* y, float* z, float* w)
+DirectX::XMVECTOR DocentApp::GetMobileSensorQuaternion()
 {
-	// 실제 모바일 하드웨어 이식 전까지 컴파일 및 디버깅을 위해 기본 단위 쿼터니언 상태 보존
-	*x = 0.0f;
-	*y = 0.0f;
-	*z = 0.0f;
-	*w = 1.0f;
+	// 수신 스레드가 데이터를 갱신하는 도중에 읽지 못하도록 안전장치 가동
+	std::lock_guard<std::mutex> lock(mDataMutex);
+
+	// 수신된 자이로 회전값을 DirectX SIMD 쿼터니언 벡터로 변환하여 반환
+	return DirectX::XMVectorSet(mSharedQx, mSharedQy, mSharedQz, mSharedQw);
 }
 
 // 메시지 처리
@@ -1192,13 +1191,19 @@ void DocentApp::NetworkThreadProc()
 				int bytesReceived = recv(mClientSocket, recvBuffer, sizeof(recvBuffer), 0);
 				if (bytesReceived > 0)
 				{
-					// TODO: 수신된 바이트 배열에서 이미지 크기와 자이로 센서 데이터를 파싱하는 로직 구현 예정
+					// 수신된 바이트 크기가 쿼터니언 패킷(float 4개 = 16바이트) 이상인지 확인
+					if (bytesReceived >= sizeof(float) * 4)
+					{
+						// 바이트 배열을 float 포인터로 캐스팅하여 패킷 복원
+						float* quatData = reinterpret_cast<float*>(recvBuffer);
 
-					// 데이터 갱신 시 Mutex로 잠그고 공유 버퍼에 안전하게 저장
-					std::lock_guard<std::mutex> lock(mDataMutex);
-					// mSharedQx = ... (파싱 데이터)
-					// mSharedImageBuffer = ... (파싱 데이터)
-					// mIsNewImageAvailable = true;
+						// 메인 렌더링 스레드와 데이터 충돌을 막기 위해 락 잠금
+						std::lock_guard<std::mutex> lock(mDataMutex);
+						mSharedQx = quatData[0];
+						mSharedQy = quatData[1];
+						mSharedQz = quatData[2];
+						mSharedQw = quatData[3];
+					}
 				}
 				else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR)
 				{
