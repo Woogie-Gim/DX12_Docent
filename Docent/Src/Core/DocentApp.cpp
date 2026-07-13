@@ -994,7 +994,6 @@ void DocentApp::Pick(int sx, int sy)
 	}
 }
 
-// ⭐ [복구 및 동기화] 유실되었던 Assimp 모델 파일 에셋 로더 본문 함수 세트
 bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
 	Assimp::Importer importer;
@@ -1185,27 +1184,53 @@ void DocentApp::NetworkThreadProc()
 		{
 			OutputDebugStringA("스마트폰 클라이언트 접속 성공!\n");
 
-			char recvBuffer[4096];
 			while (mIsNetworkRunning)
 			{
-				int bytesReceived = recv(mClientSocket, recvBuffer, sizeof(recvBuffer), 0);
-				if (bytesReceived > 0)
-				{
-					// 수신된 바이트 크기가 쿼터니언 패킷(float 4개 = 16바이트) 이상인지 확인
-					if (bytesReceived >= sizeof(float) * 4)
-					{
-						// 바이트 배열을 float 포인터로 캐스팅하여 패킷 복원
-						float* quatData = reinterpret_cast<float*>(recvBuffer);
+				// 1. 패킷의 헤더(4바이트 데이터 크기) 수신 대기
+				int dataSize = 0;
+				int headerResult = recv(mClientSocket, (char*)&dataSize, sizeof(int), 0);
 
-						// 메인 렌더링 스레드와 데이터 충돌을 막기 위해 락 잠금
-						std::lock_guard<std::mutex> lock(mDataMutex);
-						mSharedQx = quatData[0];
-						mSharedQy = quatData[1];
-						mSharedQz = quatData[2];
-						mSharedQw = quatData[3];
+				if (headerResult > 0)
+				{
+					// 2. 정상적인 이미지 패킷 크기인지 검증 (자이로 데이터와의 충돌 방지용 임시 필터)
+					if (dataSize > 0 && dataSize < 50000000)
+					{
+						char logMsg[256];
+						sprintf_s(logMsg, "[통신] 이미지 헤더 수신 완료! 데이터 크기: %d 바이트\n", dataSize);
+						OutputDebugStringA(logMsg);
+
+						// 3. 페이로드(이미지) 크기만큼 수신 버퍼 할당
+						std::vector<unsigned char> tempBuffer(dataSize);
+						int totalReceived = 0;
+
+						// 4. 조각난 TCP 스트림 데이터를 모두 받을 때까지 반복 수신
+						while (totalReceived < dataSize)
+						{
+							int received = recv(mClientSocket, (char*)tempBuffer.data() + totalReceived, dataSize - totalReceived, 0);
+							if (received <= 0) break; // 수신 중 연결 끊김 또는 에러 발생
+
+							totalReceived += received;
+						}
+
+						// 5. 모든 바이트 수신이 완료되었을 경우 공유 메모리로 이동
+						if (totalReceived == dataSize)
+						{
+							OutputDebugStringA("[통신] 이미지 페이로드 전체 수신 완벽 성공!\n");
+
+							// 메인 렌더링 스레드와 데이터 충돌을 막기 위해 Mutex 락 잠금
+							std::lock_guard<std::mutex> lock(mDataMutex);
+							mSharedImageBuffer = std::move(tempBuffer);
+							mIsNewImageAvailable = true; // 렌더링 스레드에 텍스처 업데이트 알림
+						}
+					}
+					else
+					{
+						// 헤더가 비정상적인 값이라면 자이로 데이터로 간주하고 나머지 12바이트 덤프 처리
+						char dumpBuffer[12];
+						recv(mClientSocket, dumpBuffer, 12, 0);
 					}
 				}
-				else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR)
+				else if (headerResult == 0 || headerResult == SOCKET_ERROR)
 				{
 					OutputDebugStringA("스마트폰 클라이언트 연결 끊김.\n");
 					break;
