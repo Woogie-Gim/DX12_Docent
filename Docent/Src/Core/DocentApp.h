@@ -225,4 +225,7 @@ private:
 
 	// 수신된 자이로 회전값을 DirectX SIMD 쿼터니언 벡터로 변환 반환
 	DirectX::XMVECTOR GetMobileSensorQuaternion();
+
+	// WIC 활용 메모리 바이너리 RGBA 픽셀 디코딩
+	bool DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight);
 };

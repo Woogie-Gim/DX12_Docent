@@ -5,6 +5,8 @@
 #include "../ImGui/imgui.h"
 #include "../ImGui/imgui_impl_win32.h"
 #include "../ImGui/imgui_impl_dx12.h"
+#include <wincodec.h>
+#pragma comment(lib, "windowscodecs.lib")
 
 using namespace DirectX;
 
@@ -823,6 +825,42 @@ void DocentApp::Update(const Timer& timer)
 
 	// 뷰 행렬 최종 업데이트
 	mCamera.UpdateViewMatrix();
+
+	bool bShouldUpdateTexture = false;
+	std::vector<unsigned char> localImageBuffer;
+
+	// 네트워크 스레드 데이터 충돌 방지용 Mutex 잠금 및 버퍼 이동
+	{
+		std::lock_guard<std::mutex> lock(mDataMutex);
+		if (mIsNewImageAvailable)
+		{
+			localImageBuffer = mSharedImageBuffer;
+			mIsNewImageAvailable = false;
+			bShouldUpdateTexture = true;
+		}
+	}
+
+	// 신규 이미지 수신 시 디코딩 및 GPU 리소스 업로드 실행
+	if (bShouldUpdateTexture)
+	{
+		std::vector<unsigned char> decodedPixels;
+
+		// GPU에 생성되어 있는 기존 액자 텍스처의 실제 크기 추출
+		D3D12_RESOURCE_DESC desc = mDynamicCameraTexture->GetDesc();
+		int targetWidth = (int)desc.Width;
+		int targetHeight = (int)desc.Height;
+
+		// 원본 사진을 액자 크기(targetWidth, targetHeight)에 맞춰서 디코딩
+		if (DecodeImageFromMemory(localImageBuffer, decodedPixels, targetWidth, targetHeight))
+		{
+			UploadCameraTextureRuntime(decodedPixels.data(), targetWidth, targetHeight);
+			OutputDebugStringA("[렌더링] 3D 액자 텍스처 실시간 업데이트 완벽 성공!\n");
+		}
+		else
+		{
+			OutputDebugStringA("[에러] 수신 이미지 WIC 디코딩 실패.\n");
+		}
+	}
 }
 
 DirectX::XMVECTOR DocentApp::GetMobileSensorQuaternion()
@@ -1266,4 +1304,53 @@ void DocentApp::CleanupNetwork()
 	}
 
 	WSACleanup();
+}
+
+// WIC 활용 메모리 바이너리 RGBA 픽셀 디코딩 처리
+bool DocentApp::DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight) 
+{
+	IWICImagingFactory* wicFactory = nullptr;
+	IWICStream* wicStream = nullptr;
+	IWICBitmapDecoder* decoder = nullptr;
+	IWICBitmapFrameDecode* frame = nullptr;
+	IWICBitmapScaler* scaler = nullptr;
+	IWICFormatConverter* converter = nullptr;
+
+	// COM 환경 초기화 및 WIC 팩토리 인스턴스 할당
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
+	if (FAILED(hr)) return false;
+
+	// 수신 버퍼 기반 읽기 전용 WIC 메모리 스트림 생성
+	wicFactory->CreateStream(&wicStream);
+	wicStream->InitializeFromMemory(const_cast<BYTE*>(imageBuffer.data()), imageBuffer.size());
+
+	// 스트림 데이터 기반 비트맵 디코더 생성
+	wicFactory->CreateDecoderFromStream(wicStream, nullptr, WICDecodeMetadataCacheOnLoad, &decoder);
+
+	// 이미지 첫 번째 프레임 획득 및 해상도 추출
+	decoder->GetFrame(0, &frame);
+
+	// 스마트폰 원본 사진을 액자 크기(targetWidth, targetHeight)에 맞게 리사이징
+	wicFactory->CreateBitmapScaler(&scaler);
+	scaler->Initialize(frame, targetWidth, targetHeight, WICBitmapInterpolationModeFant);
+
+	// 포맷 변환기에 frame 대신 scaler를 연결하여 RGBA 변환
+	wicFactory->CreateFormatConverter(&converter);
+	converter->Initialize(scaler, GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+
+	// 변환된 픽셀 데이터 추출 (타겟 해상도 기준)
+	UINT rowPitch = targetWidth * 4;
+	UINT imageSize = rowPitch * targetHeight;
+	outPixels.resize(imageSize);
+	converter->CopyPixels(nullptr, rowPitch, imageSize, outPixels.data());
+
+	// WIC 자원 메모리 해제
+	converter->Release();
+	frame->Release();
+	decoder->Release();
+	wicStream->Release();
+	wicFactory->Release();
+
+	return true;
 }
