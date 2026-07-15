@@ -228,4 +228,10 @@ private:
 
 	// WIC 활용 메모리 바이너리 RGBA 픽셀 디코딩
 	bool DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight);
+
+	// 디코딩된 이미지 픽셀 데이터와 상태를 Draw 함수로 전달하기 위한 변수
+	std::vector<unsigned char> mDecodedPixels;
+	int mUploadTextureWidth = 0;
+	int mUploadTextureHeight = 0;
+	bool mIsTextureReadyForUpload = false;
 };

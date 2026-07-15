@@ -435,6 +435,15 @@ int DocentApp::Run()
 			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
 			mDevice->BeginRender(clearColor);
 
+			// GPU 커맨드 리스트 활성화 직후 텍스처 업로드 대기열 처리
+			if (mIsTextureReadyForUpload)
+			{
+				UploadCameraTextureRuntime(mDecodedPixels.data(), mUploadTextureWidth, mUploadTextureHeight);
+				mIsTextureReadyForUpload = false;
+
+				OutputDebugStringA("[Run] 3D 액자 텍스처 GPU 실시간 업로드 및 렌더링 완벽 성공!\n");
+			}
+
 			// ImGui 프레임 시작
 			ImGui_ImplDX12_NewFrame();
 			ImGui_ImplWin32_NewFrame();
@@ -840,21 +849,23 @@ void DocentApp::Update(const Timer& timer)
 		}
 	}
 
-	// 신규 이미지 수신 시 디코딩 및 GPU 리소스 업로드 실행
+	// 신규 이미지 수신 시 디코딩 및 GPU 리소스 업로드 대기
 	if (bShouldUpdateTexture)
 	{
-		std::vector<unsigned char> decodedPixels;
-
 		// GPU에 생성되어 있는 기존 액자 텍스처의 실제 크기 추출
 		D3D12_RESOURCE_DESC desc = mDynamicCameraTexture->GetDesc();
 		int targetWidth = (int)desc.Width;
 		int targetHeight = (int)desc.Height;
 
 		// 원본 사진을 액자 크기(targetWidth, targetHeight)에 맞춰서 디코딩
-		if (DecodeImageFromMemory(localImageBuffer, decodedPixels, targetWidth, targetHeight))
+		if (DecodeImageFromMemory(localImageBuffer, mDecodedPixels, targetWidth, targetHeight))
 		{
-			UploadCameraTextureRuntime(decodedPixels.data(), targetWidth, targetHeight);
-			OutputDebugStringA("[렌더링] 3D 액자 텍스처 실시간 업데이트 완벽 성공!\n");
+			// 해상도 정보 저장 및 업로드 준비 완료 플래그 ON
+			mUploadTextureWidth = targetWidth;
+			mUploadTextureHeight = targetHeight;
+			mIsTextureReadyForUpload = true;
+
+			OutputDebugStringA("[Update] 이미지 디코딩 완료. Draw 단계에서 GPU 업로드를 대기합니다.\n");
 		}
 		else
 		{
