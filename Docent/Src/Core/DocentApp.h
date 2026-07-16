@@ -32,6 +32,9 @@ struct InstanceData
 	DirectX::XMFLOAT4X4 World;		// 개별 객체의 위치/회전/크기
 	DirectX::XMFLOAT2 UVOffset;		// 그림을 어디서부터 자를지
 	DirectX::XMFLOAT2 UVScale;		// 그림을 얼마나 크게 자를지
+	float IsUnlit = 0.0f;			// 조명 연산 우회 플래그
+	float UVRotation = 0.0f;		// UV 회전 각도 (라디안)
+	DirectX::XMFLOAT2 Pad;			// 메모리 정렬용 패딩
 };
 
 // 화면 전체(1프레임)가 똑같이 공유하는 정보 (카메라, 빛)
@@ -227,11 +230,15 @@ private:
 	DirectX::XMVECTOR GetMobileSensorQuaternion();
 
 	// WIC 활용 메모리 바이너리 RGBA 픽셀 디코딩
-	bool DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight);
+	bool DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight, float& outRotation);
 
 	// 디코딩된 이미지 픽셀 데이터와 상태를 Draw 함수로 전달하기 위한 변수
 	std::vector<unsigned char> mDecodedPixels;
 	int mUploadTextureWidth = 0;
 	int mUploadTextureHeight = 0;
 	bool mIsTextureReadyForUpload = false;
+
+	// 수신 이미지의 EXIF 기반 UV 회전 각도
+	float mSharedRotation = 0.0f;
+	float mUploadRotation = 0.0f;
 };

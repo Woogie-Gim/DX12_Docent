@@ -6,6 +6,7 @@
 #include "../ImGui/imgui_impl_win32.h"
 #include "../ImGui/imgui_impl_dx12.h"
 #include <wincodec.h>
+#include <wrl/client.h>
 #pragma comment(lib, "windowscodecs.lib")
 
 using namespace DirectX;
@@ -223,7 +224,7 @@ bool DocentApp::BuildCubeGeometry()
 	// 상수 버퍼 메모리 할당
 	UINT instanceSize = (sizeof(InstanceData) + 255) & ~255;
 	UINT passSize = (sizeof(PassConstants) + 255) & ~255;
-	UINT totalBufferSize = (instanceSize * 20) + passSize;
+	UINT totalBufferSize = (instanceSize * 40) + passSize;
 	CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBufferSize);
 
 	device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mConstantBuffer));
@@ -387,9 +388,28 @@ bool DocentApp::BuildCubeGeometry()
 	CD3DX12_CPU_DESCRIPTOR_HANDLE dynamicSrvHandle(mDevice->GetSrvHeap()->GetCPUDescriptorHandleForHeapStart());
 	dynamicSrvHandle.Offset(16, mCbvSrvUavDescriptorSize);
 
+	// 16번 : Diffuse (실시간 촬영본)
 	srvDesc.Format = mDynamicCameraTexture->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = mDynamicCameraTexture->GetDesc().MipLevels;
 	device->CreateShaderResourceView(mDynamicCameraTexture.Get(), &srvDesc, dynamicSrvHandle);
+	dynamicSrvHandle.Offset(1, mCbvSrvUavDescriptorSize);
+
+	// 17번 : Normal (셰이더가 t1을 반드시 샘플링하므로 기본 평면 노멀 필수)
+	srvDesc.Format = mDefaultNormal->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mDefaultNormal->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mDefaultNormal.Get(), &srvDesc, dynamicSrvHandle);
+	dynamicSrvHandle.Offset(1, mCbvSrvUavDescriptorSize);
+
+	// 18번 : Roughness
+	srvDesc.Format = mGalleryRoughness->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mGalleryRoughness->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mGalleryRoughness.Get(), &srvDesc, dynamicSrvHandle);
+	dynamicSrvHandle.Offset(1, mCbvSrvUavDescriptorSize);
+
+	// 19번 : Emissive (미할당 시 쓰레기 값이 최종 색상에 가산되어 색이 깨짐)
+	srvDesc.Format = mDefaultEmissive->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = mDefaultEmissive->GetDesc().MipLevels;
+	device->CreateShaderResourceView(mDefaultEmissive.Get(), &srvDesc, dynamicSrvHandle);
 
 	return true;
 }
@@ -428,7 +448,7 @@ int DocentApp::Run()
 			passConstants.LightDir = XMFLOAT3(0.5f, -1.0f, -0.2f);
 			passConstants.LightColor = XMFLOAT3(1.0f, 0.95f, 0.88f);
 
-			UINT passOffset = instanceSize * 20;
+			UINT passOffset = instanceSize * 40;
 			memcpy((BYTE*)mCBVoidPtr + passOffset, &passConstants, sizeof(PassConstants));
 
 			// 렌더 타겟 세팅 및 화면 지우기 (파란색 배경)
@@ -441,7 +461,10 @@ int DocentApp::Run()
 				UploadCameraTextureRuntime(mDecodedPixels.data(), mUploadTextureWidth, mUploadTextureHeight);
 				mIsTextureReadyForUpload = false;
 
-				OutputDebugStringA("[Run] 3D 액자 텍스처 GPU 실시간 업로드 및 렌더링 완벽 성공!\n");
+				// 텍스처 갱신 시점에 맞춰 1번 액자 도슨트 설명 텍스트 동적 교체
+				mAllRitems[1]->ArtworkDescription = "[스마트폰 런타임 수신작]\nTCP 소켓 통신을 통해 모바일에서 실시간으로 전송된 작품입니다. WIC 스케일링과 회전 교정을 거쳐 DirectX 12 렌더링 파이프라인에 성공적으로 안착되었습니다.";
+
+				OutputDebugStringA("[Run] 3D 액자 텍스처 실시간 렌더링 및 도슨트 갱신 완료!\n");
 			}
 
 			// ImGui 프레임 시작
@@ -692,27 +715,35 @@ int DocentApp::Run()
 				objData.UVOffset = ri->UVOffset;
 				objData.UVScale = ri->UVScale;
 
-				// 정규 인덱스 오프셋 연산 기입
-				UINT objOffset = ri->ObjCBIndex * instanceSize;
-				memcpy((BYTE*)mCBVoidPtr + objOffset, &objData, sizeof(InstanceData));
-
-				cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
-
 				for (const auto& submesh : ri->Submeshes)
 				{
 					CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(hGpuDescriptor);
 
 					// MaterialIndex를 1(사진 평면)로 교체하여 캔버스만 비워두기
-					if (i == 1 && submesh.MaterialIndex == 1)
+					bool isPhotoCanvas = (i == 1 && submesh.MaterialIndex == 1);
+
+					if (isPhotoCanvas)
 					{
-						// 아직 데이터가 복사되지 않은 빈 텍스처 리소스를 바인딩하여 까만 대기 화면 연출
+						// 실시간 촬영본 전용 SRV 세트(16~19) 바인딩
 						texHandle.Offset(16, mCbvSrvUavDescriptorSize);
+
+						// 조명 우회 및 세로 사진 90도 보정 적용
+						objData.IsUnlit = 1.0f;
+						objData.UVRotation = mUploadRotation;
 					}
 					else
 					{
 						texHandle.Offset(ri->SRVIndexOffset + (submesh.MaterialIndex * 4), mCbvSrvUavDescriptorSize);
+
+						objData.IsUnlit = 0.0f;
+						objData.UVRotation = 0.0f;
 					}
 
+					// 서브메쉬별로 상수 버퍼 슬롯을 분리하여 플래그 충돌 방지
+					UINT objOffset = (ri->ObjCBIndex * 2 + (isPhotoCanvas ? 1 : 0)) * instanceSize;
+					memcpy((BYTE*)mCBVoidPtr + objOffset, &objData, sizeof(InstanceData));
+
+					cmdList->SetGraphicsRootConstantBufferView(0, cbAddress + objOffset);
 					cmdList->SetGraphicsRootDescriptorTable(2, texHandle);
 					cmdList->DrawIndexedInstanced(submesh.IndexCount, 1, submesh.StartIndexLocation, 0, 0);
 				}
@@ -835,42 +866,29 @@ void DocentApp::Update(const Timer& timer)
 	// 뷰 행렬 최종 업데이트
 	mCamera.UpdateViewMatrix();
 
-	bool bShouldUpdateTexture = false;
-	std::vector<unsigned char> localImageBuffer;
-
 	// 네트워크 스레드 데이터 충돌 방지용 Mutex 잠금 및 버퍼 이동
+	bool bShouldUpdateTexture = false;
+	std::vector<unsigned char> localDecodedPixels;
+	float localRotation = 0.0f;
+
 	{
 		std::lock_guard<std::mutex> lock(mDataMutex);
 		if (mIsNewImageAvailable)
 		{
-			localImageBuffer = mSharedImageBuffer;
+			localDecodedPixels = std::move(mSharedImageBuffer);
+			localRotation = mSharedRotation;
 			mIsNewImageAvailable = false;
 			bShouldUpdateTexture = true;
 		}
 	}
 
-	// 신규 이미지 수신 시 디코딩 및 GPU 리소스 업로드 대기
 	if (bShouldUpdateTexture)
 	{
-		// GPU에 생성되어 있는 기존 액자 텍스처의 실제 크기 추출
-		D3D12_RESOURCE_DESC desc = mDynamicCameraTexture->GetDesc();
-		int targetWidth = (int)desc.Width;
-		int targetHeight = (int)desc.Height;
-
-		// 원본 사진을 액자 크기(targetWidth, targetHeight)에 맞춰서 디코딩
-		if (DecodeImageFromMemory(localImageBuffer, mDecodedPixels, targetWidth, targetHeight))
-		{
-			// 해상도 정보 저장 및 업로드 준비 완료 플래그 ON
-			mUploadTextureWidth = targetWidth;
-			mUploadTextureHeight = targetHeight;
-			mIsTextureReadyForUpload = true;
-
-			OutputDebugStringA("[Update] 이미지 디코딩 완료. Draw 단계에서 GPU 업로드를 대기합니다.\n");
-		}
-		else
-		{
-			OutputDebugStringA("[에러] 수신 이미지 WIC 디코딩 실패.\n");
-		}
+		mDecodedPixels = std::move(localDecodedPixels);
+		mUploadTextureWidth = 1024;
+		mUploadTextureHeight = 1024;
+		mUploadRotation = localRotation;
+		mIsTextureReadyForUpload = true;
 	}
 }
 
@@ -1187,7 +1205,7 @@ void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, 
 
 	cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
 
-	// 리소스 배리어 원상복구 : 복사 완료 후 다시 셰이더가 렌더링 시 읽을 수 있도록 읽기 상태로 전환
+	// 복사 완료 후 다시 셰이더가 렌더링 시 읽을 수 있도록 읽기 상태로 전환
 	CD3DX12_RESOURCE_BARRIER barrierToShader = CD3DX12_RESOURCE_BARRIER::Transition(
 		mDynamicCameraTexture.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
@@ -1219,12 +1237,15 @@ bool DocentApp::InitNetwork()
 	return true;
 }
 
-// 백그라운드 수신 스레드 (렌더링과 독립적으로 무한 루프 구동)
+// 백그라운드 네트워크 수신 스레드
 void DocentApp::NetworkThreadProc()
 {
+	// COM 라이브러리 스레드 초기화
+	CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
 	while (mIsNetworkRunning)
 	{
-		// 스마트폰 클라이언트 연결 대기 (Blocking 함수지만 스레드가 분리되어 메인 화면은 멈추지 않음)
+		// 클라이언트 접속 대기
 		sockaddr_in clientAddr;
 		int clientAddrLen = sizeof(clientAddr);
 		mClientSocket = accept(mListenSocket, (SOCKADDR*)&clientAddr, &clientAddrLen);
@@ -1235,46 +1256,57 @@ void DocentApp::NetworkThreadProc()
 
 			while (mIsNetworkRunning)
 			{
-				// 1. 패킷의 헤더(4바이트 데이터 크기) 수신 대기
+				// 4바이트 헤더 수신
 				int dataSize = 0;
 				int headerResult = recv(mClientSocket, (char*)&dataSize, sizeof(int), 0);
 
 				if (headerResult > 0)
 				{
-					// 2. 정상적인 이미지 패킷 크기인지 검증 (자이로 데이터와의 충돌 방지용 임시 필터)
+					// 이미지 패킷 크기 유효성 검증
 					if (dataSize > 0 && dataSize < 50000000)
 					{
+						// 헤더 수신 확인 로그
 						char logMsg[256];
 						sprintf_s(logMsg, "[통신] 이미지 헤더 수신 완료! 데이터 크기: %d 바이트\n", dataSize);
 						OutputDebugStringA(logMsg);
 
-						// 3. 페이로드(이미지) 크기만큼 수신 버퍼 할당
+						// 페이로드 버퍼 할당 및 수신
 						std::vector<unsigned char> tempBuffer(dataSize);
 						int totalReceived = 0;
 
-						// 4. 조각난 TCP 스트림 데이터를 모두 받을 때까지 반복 수신
 						while (totalReceived < dataSize)
 						{
 							int received = recv(mClientSocket, (char*)tempBuffer.data() + totalReceived, dataSize - totalReceived, 0);
-							if (received <= 0) break; // 수신 중 연결 끊김 또는 에러 발생
-
+							if (received <= 0) break;
 							totalReceived += received;
 						}
 
-						// 5. 모든 바이트 수신이 완료되었을 경우 공유 메모리로 이동
+						// 전체 페이로드 수신 완료 검증
 						if (totalReceived == dataSize)
 						{
-							OutputDebugStringA("[통신] 이미지 페이로드 전체 수신 완벽 성공!\n");
+							OutputDebugStringA("[통신] 이미지 페이로드 전체 수신 성공! WIC 디코딩 시작...\n");
 
-							// 메인 렌더링 스레드와 데이터 충돌을 막기 위해 Mutex 락 잠금
-							std::lock_guard<std::mutex> lock(mDataMutex);
-							mSharedImageBuffer = std::move(tempBuffer);
-							mIsNewImageAvailable = true; // 렌더링 스레드에 텍스처 업데이트 알림
+							// 런타임 WIC 디코딩 수행
+							std::vector<unsigned char> decodedPixels;
+							float decodedRotation = 0.0f;
+							if (DecodeImageFromMemory(tempBuffer, decodedPixels, 1024, 1024, decodedRotation))
+							{
+								// 렌더링 스레드로 데이터 이관 및 락(Lock) 처리
+								std::lock_guard<std::mutex> lock(mDataMutex);
+								mSharedImageBuffer = std::move(decodedPixels);
+								mSharedRotation = decodedRotation;
+								mIsNewImageAvailable = true;
+								OutputDebugStringA("[통신] 디코딩 완료! GPU 업로드를 요청합니다.\n");
+							}
+							else
+							{
+								OutputDebugStringA("[에러] 백그라운드 이미지 WIC 디코딩 실패.\n");
+							}
 						}
 					}
 					else
 					{
-						// 헤더가 비정상적인 값이라면 자이로 데이터로 간주하고 나머지 12바이트 덤프 처리
+						// 비정상 패킷 덤프 처리
 						char dumpBuffer[12];
 						recv(mClientSocket, dumpBuffer, 12, 0);
 					}
@@ -1289,6 +1321,9 @@ void DocentApp::NetworkThreadProc()
 			mClientSocket = INVALID_SOCKET;
 		}
 	}
+
+	// COM 자원 해제
+	CoUninitialize();
 }
 
 // 스레드 및 소켓 완전 종료 관리
@@ -1316,52 +1351,74 @@ void DocentApp::CleanupNetwork()
 
 	WSACleanup();
 }
-
-// WIC 활용 메모리 바이너리 RGBA 픽셀 디코딩 처리
-bool DocentApp::DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight) 
+// WIC 바이너리 디코딩 및 스케일링 (EXIF 방향 각도 함께 반환)
+bool DocentApp::DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight, float& outRotation)
 {
-	IWICImagingFactory* wicFactory = nullptr;
-	IWICStream* wicStream = nullptr;
-	IWICBitmapDecoder* decoder = nullptr;
-	IWICBitmapFrameDecode* frame = nullptr;
-	IWICBitmapScaler* scaler = nullptr;
-	IWICFormatConverter* converter = nullptr;
+	using Microsoft::WRL::ComPtr;
 
-	// COM 환경 초기화 및 WIC 팩토리 인스턴스 할당
-	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-	hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
-	if (FAILED(hr)) return false;
+	// WIC 팩토리 생성
+	ComPtr<IWICImagingFactory> wicFactory;
+	if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory))))
+		return false;
 
-	// 수신 버퍼 기반 읽기 전용 WIC 메모리 스트림 생성
-	wicFactory->CreateStream(&wicStream);
-	wicStream->InitializeFromMemory(const_cast<BYTE*>(imageBuffer.data()), imageBuffer.size());
+	// 메모리 버퍼를 WIC 스트림으로 연결
+	ComPtr<IWICStream> wicStream;
+	if (FAILED(wicFactory->CreateStream(&wicStream)))
+		return false;
+	if (FAILED(wicStream->InitializeFromMemory(const_cast<BYTE*>(imageBuffer.data()), static_cast<DWORD>(imageBuffer.size()))))
+		return false;
 
-	// 스트림 데이터 기반 비트맵 디코더 생성
-	wicFactory->CreateDecoderFromStream(wicStream, nullptr, WICDecodeMetadataCacheOnLoad, &decoder);
+	// 디코더 및 첫 번째 프레임 추출
+	ComPtr<IWICBitmapDecoder> decoder;
+	if (FAILED(wicFactory->CreateDecoderFromStream(wicStream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)))
+		return false;
 
-	// 이미지 첫 번째 프레임 획득 및 해상도 추출
-	decoder->GetFrame(0, &frame);
+	ComPtr<IWICBitmapFrameDecode> frame;
+	if (FAILED(decoder->GetFrame(0, &frame)))
+		return false;
 
-	// 스마트폰 원본 사진을 액자 크기(targetWidth, targetHeight)에 맞게 리사이징
-	wicFactory->CreateBitmapScaler(&scaler);
-	scaler->Initialize(frame, targetWidth, targetHeight, WICBitmapInterpolationModeFant);
+	// EXIF Orientation 태그(274) 조회하여 UV 회전 각도 산출
+	outRotation = 0.0f;
+	ComPtr<IWICMetadataQueryReader> metaReader;
+	if (SUCCEEDED(frame->GetMetadataQueryReader(&metaReader)))
+	{
+		PROPVARIANT propValue;
+		PropVariantInit(&propValue);
 
-	// 포맷 변환기에 frame 대신 scaler를 연결하여 RGBA 변환
-	wicFactory->CreateFormatConverter(&converter);
-	converter->Initialize(scaler, GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+		if (SUCCEEDED(metaReader->GetMetadataByName(L"/app1/ifd/{ushort=274}", &propValue)) && propValue.vt == VT_UI2)
+		{
+			switch (propValue.uiVal)
+			{
+			case 3: outRotation = DirectX::XM_PI; break;			// 180도
+			case 6: outRotation = -DirectX::XM_PIDIV2; break;		// 시계 방향 90도
+			case 8: outRotation = DirectX::XM_PIDIV2; break;		// 반시계 방향 90도
+			default: outRotation = 0.0f; break;						// 1 = 정방향
+			}
+		}
+		PropVariantClear(&propValue);
+	}
 
-	// 변환된 픽셀 데이터 추출 (타겟 해상도 기준)
+	// 스마트폰 원본 사진을 액자 크기에 맞게 리사이징
+	ComPtr<IWICBitmapScaler> scaler;
+	if (FAILED(wicFactory->CreateBitmapScaler(&scaler)))
+		return false;
+	if (FAILED(scaler->Initialize(frame.Get(), targetWidth, targetHeight, WICBitmapInterpolationModeFant)))
+		return false;
+
+	// 포맷 변환기를 파이프라인 최종단에 배치하여 RGBA 출력 포맷 보장
+	ComPtr<IWICFormatConverter> converter;
+	if (FAILED(wicFactory->CreateFormatConverter(&converter)))
+		return false;
+	if (FAILED(converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom)))
+		return false;
+
+	// 최종 픽셀 데이터 복사 (converter에서 호출)
 	UINT rowPitch = targetWidth * 4;
 	UINT imageSize = rowPitch * targetHeight;
 	outPixels.resize(imageSize);
-	converter->CopyPixels(nullptr, rowPitch, imageSize, outPixels.data());
 
-	// WIC 자원 메모리 해제
-	converter->Release();
-	frame->Release();
-	decoder->Release();
-	wicStream->Release();
-	wicFactory->Release();
+	if (FAILED(converter->CopyPixels(nullptr, rowPitch, imageSize, outPixels.data())))
+		return false;
 
 	return true;
 }

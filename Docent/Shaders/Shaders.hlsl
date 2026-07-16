@@ -4,6 +4,9 @@ cbuffer cbPerObject : register(b0)
     float4x4 gWorld;
     float2 gUVOffset;
     float2 gUVScale;
+    float gIsUnlit; // 조명 연산 우회 플래그
+    float gUVRotation; // UV 회전 각도 (라디안)
+    float2 objPad;
 };
 
 // 레지스터 b1 : 화면 공용 정보 (PassConstants)
@@ -60,7 +63,19 @@ VertexOut VS(VertexIn vin)
     vout.TangentW = mul(vin.TangentL, (float3x3) gWorld);
     
     // 원본 UV 좌표에 스케일을 곱하고 오프셋을 더함
-    vout.TexC = (vin.TexC * gUVScale) + gUVOffset;
+    float2 uv = (vin.TexC * gUVScale) + gUVOffset;
+    
+    // UV 중심(0.5, 0.5) 기준 회전 보정 적용
+    if (abs(gUVRotation) > 0.001f)
+    {
+        float s = sin(gUVRotation);
+        float c = cos(gUVRotation);
+        float2 centered = uv - 0.5f;
+        uv = float2(centered.x * c - centered.y * s,
+                    centered.x * s + centered.y * c) + 0.5f;
+    }
+    
+    vout.TexC = uv;
     
     return vout;
 }
@@ -90,6 +105,12 @@ float4 PS(VertexOut pin) : SV_Target
 {
     // 텍스처에서 기본 색상 가져오기
     float4 texColor = gDiffuseMap.Sample(gsamAnisotropicWrap, pin.TexC);
+    
+    // 실시간 촬영본은 물리 조명 연산 없이 원본 색상 그대로 출력
+    if (gIsUnlit > 0.5f)
+    {
+        return float4(texColor.rgb, 1.0f);
+    }
     
     // 거칠기 텍스처 샘플링 (G채널 = Roughness)
     float4 mrSample = gMetallicRoughnessMap.Sample(gsamAnisotropicWrap, pin.TexC);
