@@ -99,6 +99,18 @@ struct RenderItem
 	std::string ArtworkDescription;
 };
 
+// 언리얼과 동일한 패킷 헤더 정의
+#pragma pack(push, 1)
+struct DocentHeader
+{
+	uint32_t Magic;
+	uint32_t Type;
+	uint32_t PayloadSize;
+};
+#pragma pack(pop)
+
+enum class EDocentPacket : uint32_t { Gyro = 1, Image = 2, Docent = 3 };
+
 class DocentApp
 {
 public:
@@ -241,4 +253,15 @@ private:
 	// 수신 이미지의 EXIF 기반 UV 회전 각도
 	float mSharedRotation = 0.0f;
 	float mUploadRotation = 0.0f;
+
+	// 요청 바이트 수 전량 수신 보장
+	bool RecvAll(SOCKET s, char* buf, int len);
+
+	// 수신 페이로드를 타입별로 분기 처리
+	void HandlePacket(uint32_t type, std::vector<unsigned char>& payload);
+
+	// 도슨트 텍스트 공유 버퍼
+	std::string mSharedTitle;
+	std::string mSharedDescription;
+	bool mIsNewDocentAvailable = false;
 };

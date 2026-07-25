@@ -107,10 +107,21 @@ bool DocentApp::Initialize()
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	ImGui::StyleColorsDark();
 
-	// 모바일 최적화 글로벌 UI 요소 스케일 및 폰트 크기 배율 조정
-	// 기본 폰트 아틀라스 크기 자체를 기본값의 1.5배인 24.0f로 빌드하여 모바일 터치 가독성 확보
-	io.Fonts->AddFontDefault();
-	io.FontGlobalScale = 1.5f;
+	// 한글 폰트 로드 (맑은 고딕)
+	ImFont* krFont = io.Fonts->AddFontFromFileTTF(
+		"C:\\Windows\\Fonts\\malgun.ttf",
+		20.0f,
+		nullptr,
+		io.Fonts->GetGlyphRangesKorean());
+
+	// 로드 실패 시 즉시 감지 (경로 오류 등)
+	if (krFont == nullptr)
+	{
+		OutputDebugStringA("[에러] 한글 폰트 로드 실패! 경로 확인 필요.\n");
+		io.Fonts->AddFontDefault();  // 폴백
+	}
+
+	io.FontGlobalScale = 1.0f;  // 배율 중복 제거, 크기는 위 20.0f로만 제어
 
 	// Win32 백엔드 초기화
 	ImGui_ImplWin32_Init(mhMainWnd);
@@ -455,16 +466,10 @@ int DocentApp::Run()
 			float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
 			mDevice->BeginRender(clearColor);
 
-			// GPU 커맨드 리스트 활성화 직후 텍스처 업로드 대기열 처리
 			if (mIsTextureReadyForUpload)
 			{
 				UploadCameraTextureRuntime(mDecodedPixels.data(), mUploadTextureWidth, mUploadTextureHeight);
 				mIsTextureReadyForUpload = false;
-
-				// 텍스처 갱신 시점에 맞춰 1번 액자 도슨트 설명 텍스트 동적 교체
-				mAllRitems[1]->ArtworkDescription = "[스마트폰 런타임 수신작]\nTCP 소켓 통신을 통해 모바일에서 실시간으로 전송된 작품입니다. WIC 스케일링과 회전 교정을 거쳐 DirectX 12 렌더링 파이프라인에 성공적으로 안착되었습니다.";
-
-				OutputDebugStringA("[Run] 3D 액자 텍스처 실시간 렌더링 및 도슨트 갱신 완료!\n");
 			}
 
 			// ImGui 프레임 시작
@@ -868,8 +873,10 @@ void DocentApp::Update(const Timer& timer)
 
 	// 네트워크 스레드 데이터 충돌 방지용 Mutex 잠금 및 버퍼 이동
 	bool bShouldUpdateTexture = false;
+	bool bShouldUpdateDocent = false;
 	std::vector<unsigned char> localDecodedPixels;
 	float localRotation = 0.0f;
+	std::string localTitle, localDesc;
 
 	{
 		std::lock_guard<std::mutex> lock(mDataMutex);
@@ -880,6 +887,14 @@ void DocentApp::Update(const Timer& timer)
 			mIsNewImageAvailable = false;
 			bShouldUpdateTexture = true;
 		}
+		// 도슨트 텍스트도 같은 잠금 구간에서 함께 인출
+		if (mIsNewDocentAvailable)
+		{
+			localTitle = std::move(mSharedTitle);
+			localDesc = std::move(mSharedDescription);
+			mIsNewDocentAvailable = false;
+			bShouldUpdateDocent = true;
+		}
 	}
 
 	if (bShouldUpdateTexture)
@@ -889,6 +904,13 @@ void DocentApp::Update(const Timer& timer)
 		mUploadTextureHeight = 1024;
 		mUploadRotation = localRotation;
 		mIsTextureReadyForUpload = true;
+	}
+
+	if (bShouldUpdateDocent)
+	{
+		// 잠금 밖에서 액자 설명 갱신
+		mAllRitems[1]->ArtworkDescription =
+			localTitle.empty() ? localDesc : ("[" + localTitle + "]\n" + localDesc);
 	}
 }
 
@@ -1017,7 +1039,6 @@ LRESULT DocentApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-// ⭐ [복구 및 동기화] 유실되었던 레이캐스팅 피킹 함수 알고리즘 본문
 void DocentApp::Pick(int sx, int sy)
 {
 	DirectX::XMFLOAT4X4 proj;
@@ -1240,7 +1261,6 @@ bool DocentApp::InitNetwork()
 // 백그라운드 네트워크 수신 스레드
 void DocentApp::NetworkThreadProc()
 {
-	// COM 라이브러리 스레드 초기화
 	CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
 	while (mIsNetworkRunning)
@@ -1250,79 +1270,45 @@ void DocentApp::NetworkThreadProc()
 		int clientAddrLen = sizeof(clientAddr);
 		mClientSocket = accept(mListenSocket, (SOCKADDR*)&clientAddr, &clientAddrLen);
 
-		if (mClientSocket != INVALID_SOCKET)
+		if (mClientSocket == INVALID_SOCKET)
 		{
-			OutputDebugStringA("스마트폰 클라이언트 접속 성공!\n");
-
-			while (mIsNetworkRunning)
-			{
-				// 4바이트 헤더 수신
-				int dataSize = 0;
-				int headerResult = recv(mClientSocket, (char*)&dataSize, sizeof(int), 0);
-
-				if (headerResult > 0)
-				{
-					// 이미지 패킷 크기 유효성 검증
-					if (dataSize > 0 && dataSize < 50000000)
-					{
-						// 헤더 수신 확인 로그
-						char logMsg[256];
-						sprintf_s(logMsg, "[통신] 이미지 헤더 수신 완료! 데이터 크기: %d 바이트\n", dataSize);
-						OutputDebugStringA(logMsg);
-
-						// 페이로드 버퍼 할당 및 수신
-						std::vector<unsigned char> tempBuffer(dataSize);
-						int totalReceived = 0;
-
-						while (totalReceived < dataSize)
-						{
-							int received = recv(mClientSocket, (char*)tempBuffer.data() + totalReceived, dataSize - totalReceived, 0);
-							if (received <= 0) break;
-							totalReceived += received;
-						}
-
-						// 전체 페이로드 수신 완료 검증
-						if (totalReceived == dataSize)
-						{
-							OutputDebugStringA("[통신] 이미지 페이로드 전체 수신 성공! WIC 디코딩 시작...\n");
-
-							// 런타임 WIC 디코딩 수행
-							std::vector<unsigned char> decodedPixels;
-							float decodedRotation = 0.0f;
-							if (DecodeImageFromMemory(tempBuffer, decodedPixels, 1024, 1024, decodedRotation))
-							{
-								// 렌더링 스레드로 데이터 이관 및 락(Lock) 처리
-								std::lock_guard<std::mutex> lock(mDataMutex);
-								mSharedImageBuffer = std::move(decodedPixels);
-								mSharedRotation = decodedRotation;
-								mIsNewImageAvailable = true;
-								OutputDebugStringA("[통신] 디코딩 완료! GPU 업로드를 요청합니다.\n");
-							}
-							else
-							{
-								OutputDebugStringA("[에러] 백그라운드 이미지 WIC 디코딩 실패.\n");
-							}
-						}
-					}
-					else
-					{
-						// 비정상 패킷 덤프 처리
-						char dumpBuffer[12];
-						recv(mClientSocket, dumpBuffer, 12, 0);
-					}
-				}
-				else if (headerResult == 0 || headerResult == SOCKET_ERROR)
-				{
-					OutputDebugStringA("스마트폰 클라이언트 연결 끊김.\n");
-					break;
-				}
-			}
-			closesocket(mClientSocket);
-			mClientSocket = INVALID_SOCKET;
+			// 리슨 소켓이 닫혔거나(종료) 오류면 루프 이탈
+			break;
 		}
+
+		OutputDebugStringA("스마트폰 클라이언트 접속 성공!\n");
+
+		// 접속된 클라이언트로부터 패킷 수신 루프
+		while (mIsNetworkRunning)
+		{
+			DocentHeader header{};
+			if (!RecvAll(mClientSocket, (char*)&header, sizeof(header)))
+			{
+				OutputDebugStringA("클라이언트 연결 종료.\n");
+				break;
+			}
+
+			if (header.Magic != 0xD0CE0000u)
+			{
+				OutputDebugStringA("[에러] 매직 불일치. 연결을 끊습니다.\n");
+				break;
+			}
+
+			if (header.PayloadSize > 50000000u) break;
+
+			std::vector<unsigned char> payload(header.PayloadSize);
+			if (header.PayloadSize > 0 &&
+				!RecvAll(mClientSocket, (char*)payload.data(), (int)header.PayloadSize))
+				break;
+
+			HandlePacket(header.Type, payload);
+		}
+
+		// 내부 루프 이탈 시 클라이언트 소켓 정리 후 재접속 대기
+		closesocket(mClientSocket);
+		mClientSocket = INVALID_SOCKET;
 	}
 
-	// COM 자원 해제
 	CoUninitialize();
 }
 
@@ -1421,4 +1407,101 @@ bool DocentApp::DecodeImageFromMemory(const std::vector<unsigned char>& imageBuf
 		return false;
 
 	return true;
+}
+
+bool DocentApp::RecvAll(SOCKET s, char* buf, int len)
+{
+	int total = 0;
+	while (total < len)
+	{
+		int r = recv(s, buf + total, len - total, 0);
+		if (r <= 0) return false;
+		total += r;
+	}
+	return true;
+}
+
+// 페이로드에서 [int32 길이][데이터] 블록을 순차 추출
+static bool ReadBlock(const std::vector<unsigned char>& buf, size_t& cursor, std::string& out)
+{
+	if (cursor + sizeof(int32_t) > buf.size()) return false;
+	int32_t len = 0;
+	memcpy(&len, buf.data() + cursor, sizeof(int32_t));
+	cursor += sizeof(int32_t);
+
+	if (len < 0 || cursor + len > buf.size()) return false;
+	out.assign(reinterpret_cast<const char*>(buf.data() + cursor), len);
+	cursor += len;
+	return true;
+}
+
+void DocentApp::HandlePacket(uint32_t type, std::vector<unsigned char>& payload)
+{
+	switch (static_cast<EDocentPacket>(type))
+	{
+	case EDocentPacket::Gyro:
+	{
+		if (payload.size() != sizeof(float) * 4) return;
+		float q[4];
+		memcpy(q, payload.data(), sizeof(q));
+
+		std::lock_guard<std::mutex> lock(mDataMutex);
+		mSharedQx = q[0]; mSharedQy = q[1]; mSharedQz = q[2]; mSharedQw = q[3];
+		break;
+	}
+	case EDocentPacket::Image:
+	{
+		std::vector<unsigned char> pixels;
+		float rot = 0.0f;
+		if (!DecodeImageFromMemory(payload, pixels, 1024, 1024, rot)) return;
+
+		std::lock_guard<std::mutex> lock(mDataMutex);
+		mSharedImageBuffer = std::move(pixels);
+		mSharedRotation = rot;
+		mIsNewImageAvailable = true;
+		break;
+	}
+	case EDocentPacket::Docent:
+	{
+		size_t cursor = 0;
+		std::string title, desc;
+		if (!ReadBlock(payload, cursor, title)) return;
+		if (!ReadBlock(payload, cursor, desc)) return;
+
+		// 잔여 구간을 이미지 블록으로 해석
+		std::vector<unsigned char> pixels;
+		float rot = 0.0f;
+		bool hasImage = false;
+
+		if (cursor + sizeof(int32_t) <= payload.size())
+		{
+			int32_t imgLen = 0;
+			memcpy(&imgLen, payload.data() + cursor, sizeof(int32_t));
+			cursor += sizeof(int32_t);
+
+			if (imgLen > 0 && cursor + imgLen <= payload.size())
+			{
+				std::vector<unsigned char> raw(payload.begin() + cursor,
+					payload.begin() + cursor + imgLen);
+				hasImage = DecodeImageFromMemory(raw, pixels, 1024, 1024, rot);
+			}
+		}
+
+		std::lock_guard<std::mutex> lock(mDataMutex);
+		mSharedTitle = std::move(title);
+		mSharedDescription = std::move(desc);
+		mIsNewDocentAvailable = true;
+
+		if (hasImage)
+		{
+			mSharedImageBuffer = std::move(pixels);
+			mSharedRotation = rot;
+			mIsNewImageAvailable = true;
+		}
+		break;
+	}
+	default:
+		// 미정의 타입 무시
+		break;
+	}
 }
