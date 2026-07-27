@@ -7,9 +7,42 @@
 #include "../ImGui/imgui_impl_dx12.h"
 #include <wincodec.h>
 #include <wrl/client.h>
+#include <fstream>
+#include <algorithm>
 #pragma comment(lib, "windowscodecs.lib")
 
 using namespace DirectX;
+
+// 실행 파일(exe) 위치 기준 리소스 절대경로 조립 (wide)
+static std::wstring GetResourcePathW(const std::wstring& relative)
+{
+	wchar_t exePath[MAX_PATH] = {};
+	GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+
+	// exe 파일명 제거하고 디렉터리만 확보
+	std::wstring dir(exePath);
+	size_t pos = dir.find_last_of(L"\\/");
+	if (pos != std::wstring::npos) dir = dir.substr(0, pos);
+
+	return dir + L"\\Resources\\" + relative;
+}
+
+// 실행 파일 위치 기준 리소스 절대경로 조립 (narrow, Assimp용)
+static std::string GetResourcePathA(const std::string& relative)
+{
+	char exePath[MAX_PATH] = {};
+	GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+
+	std::string dir(exePath);
+	size_t pos = dir.find_last_of("\\/");
+	if (pos != std::string::npos) dir = dir.substr(0, pos);
+
+	std::string full = dir + "/Resources/" + relative;
+
+	// 백슬래시를 슬래시로 통일 (Assimp 파일 오픈 호환성)
+	std::replace(full.begin(), full.end(), '\\', '/');
+	return full;
+}
 
 // 전역 포인터 (WindwoProc에서 멤버 함수 호출용)
 DocentApp* gApp = nullptr;
@@ -196,8 +229,15 @@ bool DocentApp::BuildCubeGeometry()
 
 	// 액자 데이터 로드
 	std::vector<SubmeshGeometry> frameSubmeshes;
-	std::string framePath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\frame.obj";
-	if (!LoadModel(framePath, vertices, indices, frameSubmeshes)) return false;
+	std::string framePath = GetResourcePathA("frame.obj");
+	// 실제 조립된 경로를 출력해서 확인
+	OutputDebugStringA(("[경로확인] frame: " + framePath + "\n").c_str());
+
+	if (!LoadModel(framePath, vertices, indices, frameSubmeshes))
+	{
+		OutputDebugStringA("[에러] frame.obj 로드 실패!\n");
+		return false;
+	}
 
 	// 원본 정점 데이터 기반 기본 충돌 박스 생성 (액자 정점 개수만 사용)
 	DirectX::BoundingBox baseBox;
@@ -205,7 +245,7 @@ bool DocentApp::BuildCubeGeometry()
 
 	// 갤러리 데이터 로드 (기존 vertices, indices 바구니에 이어서 누적됨)
 	std::vector<SubmeshGeometry> gallerySubmeshes;
-	std::string galleryPath = "C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\art_gallery.obj";
+	std::string galleryPath = GetResourcePathA("art_gallery.obj");
 	if (!LoadModel(galleryPath, vertices, indices, gallerySubmeshes)) return false;
 
 	// 누적된 데이터의 총 바이트 크기 갱신
@@ -247,21 +287,22 @@ bool DocentApp::BuildCubeGeometry()
 	DirectX::ResourceUploadBatch upload(device);
 	upload.Begin();
 
-	std::wstring woodTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\wood.png";
-	std::wstring memeTexPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\meme.png";
+	// 실행 파일 기준 상대경로로 텍스처 로드
+	std::wstring woodTexPath = GetResourcePathW(L"wood.png");
+	std::wstring memeTexPath = GetResourcePathW(L"meme.png");
 	DirectX::CreateWICTextureFromFile(device, upload, woodTexPath.c_str(), mWoodTexture.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, memeTexPath.c_str(), mMemeTexture.ReleaseAndGetAddressOf());
 
-	// 텍스처 파일 경로 추가
-	std::wstring galleryDiffusePath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\Gallery_Diffuse.jpg";
-	std::wstring galleryNormalPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\Gallery_Normal.jpeg";
-	std::wstring galleryRoughnessPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\Gallery_Roughness.jpg";
+	// 갤러리 PBR 텍스처 경로
+	std::wstring galleryDiffusePath = GetResourcePathW(L"Gallery_Diffuse.jpg");
+	std::wstring galleryNormalPath = GetResourcePathW(L"Gallery_Normal.jpeg");
+	std::wstring galleryRoughnessPath = GetResourcePathW(L"Gallery_Roughness.jpg");
 
-	// (복구한 기본 파일 경로)
-	std::wstring defaultNormPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_normal.png";
-	std::wstring defaultEmiPath = L"C:\\Users\\pc\\source\\repos\\Docent\\Docent\\Resources\\default_emissive.png";
+	// 범용 기본 텍스처 경로
+	std::wstring defaultNormPath = GetResourcePathW(L"default_normal.png");
+	std::wstring defaultEmiPath = GetResourcePathW(L"default_emissive.png");
 
-	// GPU 로드 (직관적인 새 변수명 사용)
+	// GPU 로드
 	DirectX::CreateWICTextureFromFile(device, upload, galleryDiffusePath.c_str(), mGalleryDiffuse.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, galleryNormalPath.c_str(), mGalleryNormal.ReleaseAndGetAddressOf());
 	DirectX::CreateWICTextureFromFile(device, upload, galleryRoughnessPath.c_str(), mGalleryRoughness.ReleaseAndGetAddressOf());
@@ -285,15 +326,15 @@ bool DocentApp::BuildCubeGeometry()
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 		};
 
-	// 액자 슬롯: 0 ~ 11번 (지워진 mWallsMR 대신 mGalleryRoughness를 임시로 사용)
+	// 액자 슬롯: 0 ~ 11번
 	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mGalleryRoughness); CreateSRV(mDefaultEmissive);
 	CreateSRV(mMemeTexture);   CreateSRV(mDefaultNormal); CreateSRV(mGalleryRoughness); CreateSRV(mDefaultEmissive);
 	CreateSRV(mWoodTexture);   CreateSRV(mDefaultNormal); CreateSRV(mGalleryRoughness); CreateSRV(mDefaultEmissive);
 
-	// 갤러리 슬롯: 12 ~ 15번 (새 텍스처 4칸 세팅)
+	// 갤러리 슬롯: 12 ~ 15번
 	CreateSRV(mGalleryDiffuse);   // 12: Diffuse
 	CreateSRV(mGalleryNormal);    // 13: Normal
-	CreateSRV(mGalleryRoughness); // 14: Roughness 
+	CreateSRV(mGalleryRoughness); // 14: Roughness
 	CreateSRV(mDefaultEmissive);  // 15: Emissive
 
 	UINT cbIndex = 0;
@@ -312,7 +353,6 @@ bool DocentApp::BuildCubeGeometry()
 	mAllRitems.push_back(std::move(galleryItem));
 
 	// 가상 전시관 액자 배치 로직
-	// 임시 배열을 만들어 수집한 수치(X, Y, Z, RotationY)를 정렬
 	struct SlotRaw { float x, y, z, rotY; };
 	SlotRaw rawData[10] = {
 		{ 4.149f, 1.670f, -2.5f,  270.0f }, // Slot 0
@@ -356,14 +396,14 @@ bool DocentApp::BuildCubeGeometry()
 		cubeItem->SRVIndexOffset = ((i - 1) % 3) * 4;
 		cubeItem->ObjCBIndex = cbIndex++;
 
-		// 도센트 추가, 번호별 가이드 해설 스크립트 분기 기입
+		// 번호별 가이드 해설 스크립트 분기 기입
 		if (i == 1)
 		{
-			cubeItem->ArtworkDescription = "[실시간 AR 런타임 수신작]\n모바일 디바이스 센서 및 카메라 픽셀 스트림 통로를 정석 개방하여, CPU 이미지 버퍼 데이터를 GPU Default Heap 메모리로 배리어 전이 송출 연동 중인 핵심 기술 검증 캔버스입니다.";
+			cubeItem->ArtworkDescription = "[실시간 수신작]\n모바일 디바이스에서 촬영/선택한 사진을 소켓으로 수신하여, CPU 이미지 버퍼를 GPU Default Heap으로 배리어 전이 복사해 실시간 표시하는 핵심 기술 검증 캔버스입니다.";
 		}
 		else
 		{
-			cubeItem->ArtworkDescription = "가상 전시관 Slot #" + std::to_string(targetSlot) + "번에 큐레이팅 배치된 클래식 명화 에셋 오브젝트입니다. 배치를 드래그하거나 레이아웃을 교체 큐레이팅할 수 있습니다.";
+			cubeItem->ArtworkDescription = "가상 전시관 Slot #" + std::to_string(targetSlot) + "번에 배치된 전시 오브젝트입니다. 드래그하거나 레이아웃을 교체할 수 있습니다.";
 		}
 
 		baseBox.Transform(cubeItem->Bounds, XMLoadFloat4x4(&cubeItem->World));
@@ -372,15 +412,15 @@ bool DocentApp::BuildCubeGeometry()
 		mAllRitems.push_back(std::move(cubeItem));
 	}
 
-	// 동적 파이프라인 초기화 : 런타임 카메라 촬영본이 업로드될 가상 텍스처 리소스 생성
+	// 동적 파이프라인 초기화 : 런타임 촬영본이 업로드될 텍스처 리소스 생성
 	D3D12_RESOURCE_DESC texDesc = {};
 	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	texDesc.Alignment = 0;
-	texDesc.Width = 1024;       // 모바일 촬영 표준 가상 해상도 가로
-	texDesc.Height = 1024;      // 모바일 촬영 표준 가상 해상도 세로
+	texDesc.Width = 1024;
+	texDesc.Height = 1024;
 	texDesc.DepthOrArraySize = 1;
 	texDesc.MipLevels = 1;
-	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // 표준 RGBA 32비트 포맷
+	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	texDesc.SampleDesc.Count = 1;
 	texDesc.SampleDesc.Quality = 0;
 	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -405,7 +445,7 @@ bool DocentApp::BuildCubeGeometry()
 	device->CreateShaderResourceView(mDynamicCameraTexture.Get(), &srvDesc, dynamicSrvHandle);
 	dynamicSrvHandle.Offset(1, mCbvSrvUavDescriptorSize);
 
-	// 17번 : Normal (셰이더가 t1을 반드시 샘플링하므로 기본 평면 노멀 필수)
+	// 17번 : Normal
 	srvDesc.Format = mDefaultNormal->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = mDefaultNormal->GetDesc().MipLevels;
 	device->CreateShaderResourceView(mDefaultNormal.Get(), &srvDesc, dynamicSrvHandle);
@@ -417,7 +457,7 @@ bool DocentApp::BuildCubeGeometry()
 	device->CreateShaderResourceView(mGalleryRoughness.Get(), &srvDesc, dynamicSrvHandle);
 	dynamicSrvHandle.Offset(1, mCbvSrvUavDescriptorSize);
 
-	// 19번 : Emissive (미할당 시 쓰레기 값이 최종 색상에 가산되어 색이 깨짐)
+	// 19번 : Emissive
 	srvDesc.Format = mDefaultEmissive->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = mDefaultEmissive->GetDesc().MipLevels;
 	device->CreateShaderResourceView(mDefaultEmissive.Get(), &srvDesc, dynamicSrvHandle);
@@ -775,53 +815,40 @@ void DocentApp::Update(const Timer& timer)
 	// 수동 이동 (자동 이동 중이 아닐 때만 작동하도록 수정)
 	if (!mIsCameraMoving)
 	{
-		// 모바일 AR 런타임 : 센서 데이터 활성화 시 (실제 스마트폰 구동 환경)
-		if (mIsMobileSensorActive)
-		{
-			// 플랫폼 센서 매니저로부터 최신 자이로 쿼터니언 데이터 수신 (가상 데이터)
-			float qx = 0.0f, qy = 0.0f, qz = 0.0f, qw = 1.0f;
-			DirectX::XMVECTOR mobileQuat = GetMobileSensorQuaternion();
-
-			// 디바이스 회전값과 카메라 행렬 완전 동기화
-			mCamera.UpdateRotationFromQuaternion(qx, qy, qz, qw);
-		}
 		// PC 디버깅 런타임 : 기존 마우스 드래그 및 WASD 조작 보존
-		else
+		if (GetAsyncKeyState('W') & 0x8000) mCamera.Walk(speed);
+		if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
+		if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
+		if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
+
+		// 이동 후 새로운 위치 측정
+		DirectX::XMFLOAT3 currPos = mCamera.GetPosition3f();
+
+		// 키보드로 조작된 새로운 X, Z 좌표를 보존하면서 눈높이를 1.5f 평면으로 정교하게 클램핑
+		mCamera.SetPosition(currPos.x, 1.5f, currPos.z);
+
+		// 최종 눈높이가 맞춰진 위치를 충돌 검사용 좌표로 확정
+		currPos = mCamera.GetPosition3f();
+
+		// 카메라를 보호하는 가상의 구 생성 (반지름 0.5f)
+		DirectX::BoundingSphere cameraSphere(currPos, 0.5f);
+		bool isColliding = false;
+
+		// 모든 가상 벽들을 순회하며 충돌 검사
+		for (const auto& wall : mWallCollisions)
 		{
-			if (GetAsyncKeyState('W') & 0x8000) mCamera.Walk(speed);
-			if (GetAsyncKeyState('S') & 0x8000) mCamera.Walk(-speed);
-			if (GetAsyncKeyState('A') & 0x8000) mCamera.Strafe(-speed);
-			if (GetAsyncKeyState('D') & 0x8000) mCamera.Strafe(speed);
-
-			// 이동 후 새로운 위치 측정
-			DirectX::XMFLOAT3 currPos = mCamera.GetPosition3f();
-
-			// 키보드로 조작된 새로운 X, Z 좌표를 보존하면서 눈높이를 1.5f 평면으로 정교하게 클램핑
-			mCamera.SetPosition(currPos.x, 1.5f, currPos.z);
-
-			// 최종 눈높이가 맞춰진 위치를 충돌 검사용 좌표로 확정
-			currPos = mCamera.GetPosition3f();
-
-			// 카메라를 보호하는 가상의 구 생성 (반지름 0.5f)
-			DirectX::BoundingSphere cameraSphere(currPos, 0.5f);
-			bool isColliding = false;
-
-			// 모든 가상 벽들을 순회하며 충돌 검사
-			for (const auto& wall : mWallCollisions)
+			// 카메라 구(Sphere)와 벽 박스(Box)가 겹쳤는지 확인
+			if (wall.Intersects(cameraSphere))
 			{
-				// 카메라 구(Sphere)와 벽 박스(Box)가 겹쳤는지 확인
-				if (wall.Intersects(cameraSphere))
-				{
-					isColliding = true;
-					break;
-				}
+				isColliding = true;
+				break;
 			}
+		}
 
-			// 벽에 부딪혔다면 이전 위치로 복구
-			if (isColliding)
-			{
-				mCamera.SetPosition(prevPos.x, prevPos.y, prevPos.z);
-			}
+		// 벽에 부딪혔다면 이전 위치로 복구
+		if (isColliding)
+		{
+			mCamera.SetPosition(prevPos.x, prevPos.y, prevPos.z);
 		}
 	}
 	// 자동 이동 및 시선 보간 제어 파트
@@ -912,15 +939,6 @@ void DocentApp::Update(const Timer& timer)
 		mAllRitems[1]->ArtworkDescription =
 			localTitle.empty() ? localDesc : ("[" + localTitle + "]\n" + localDesc);
 	}
-}
-
-DirectX::XMVECTOR DocentApp::GetMobileSensorQuaternion()
-{
-	// 수신 스레드가 데이터를 갱신하는 도중에 읽지 못하도록 안전장치 가동
-	std::lock_guard<std::mutex> lock(mDataMutex);
-
-	// 수신된 자이로 회전값을 DirectX SIMD 쿼터니언 벡터로 변환하여 반환
-	return DirectX::XMVectorSet(mSharedQx, mSharedQy, mSharedQz, mSharedQw);
 }
 
 // 메시지 처리
@@ -1084,12 +1102,30 @@ void DocentApp::Pick(int sx, int sy)
 
 bool DocentApp::LoadModel(const std::string& filename, std::vector<Vertex>& vertices, std::vector<std::uint32_t>& indices, std::vector<SubmeshGeometry>& submeshes)
 {
+	// Assimp 전에 표준 파일 오픈으로 경로 유효성 직접 검증
+	{
+		std::ifstream test(filename, std::ios::binary);
+		OutputDebugStringA(test.is_open()
+			? "[파일확인] 표준 오픈 성공\n"
+			: "[파일확인] 표준 오픈 실패\n");
+	}
+
+
 	Assimp::Importer importer;
 	const aiScene* scene = importer.ReadFile(filename,
 		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals |
 		aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
 
-	if (!scene) return false;
+	// Assimp 실패 사유 출력
+	if (!scene)
+	{
+		std::string err = "[Assimp 실패] ";
+		err += importer.GetErrorString();
+		err += "\n";
+		OutputDebugStringA(err.c_str());
+		return false;
+	}
+
 
 	ProcessNode(scene->mRootNode, scene, vertices, indices, submeshes);
 	return true;
@@ -1173,30 +1209,33 @@ void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, 
 	ID3D12Device* device = mDevice->GetDevice();
 	ID3D12GraphicsCommandList* cmdList = mDevice->GetCommandList();
 
-	// 업로드할 이미지의 행(Row)별 메모리 정렬 크기 계산 (DX12 표준 256바이트 정렬 규칙 반영)
+	// 업로드 버퍼 크기 산출 (256바이트 행 정렬 반영)
 	UINT64 uploadBufferSize = 0;
 	D3D12_RESOURCE_DESC texDesc = mDynamicCameraTexture->GetDesc();
 	device->GetCopyableFootprints(&texDesc, 0, 1, 0, nullptr, nullptr, nullptr, &uploadBufferSize);
 
-	// 중간 다리 역할을 할 업로드 버퍼 힙 리소스 임시 생성
-	CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
-	CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
-	device->CreateCommittedResource(
-		&uploadHeapProps,
-		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&mTextureUploadBuffer));
+	// 업로드 버퍼는 최초 1회만 생성 후 재사용 (텍스처 크기 고정)
+	// 매 프레임 재생성 시 GPU 복사 완료 전 해제되어 크래시 위험
+	if (!mTextureUploadBuffer)
+	{
+		CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+		device->CreateCommittedResource(
+			&uploadHeapProps,
+			D3D12_HEAP_FLAG_NONE,
+			&bufferDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&mTextureUploadBuffer));
+	}
 
-	// CPU 픽셀 데이터를 업로드 버퍼 메모리에 복사 (Map / Unmap)
+	// CPU 픽셀 데이터를 업로드 버퍼에 행 단위 복사 (가로 패딩 반영)
 	void* mappedData = nullptr;
 	mTextureUploadBuffer->Map(0, nullptr, &mappedData);
 
-	// 가로 패딩 크기를 고려하여 행 단위로 안전하게 픽셀 복사
 	BYTE* destData = (BYTE*)mappedData;
-	int srcRowPitch = width * 4; // RGBA 4바이트
-	int destRowPitch = (srcRowPitch + 255) & ~255; // 256 정렬 보정
+	int srcRowPitch = width * 4;                     // RGBA 4바이트
+	int destRowPitch = (srcRowPitch + 255) & ~255;   // 256 정렬 보정
 
 	for (int y = 0; y < height; ++y)
 	{
@@ -1204,14 +1243,14 @@ void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, 
 	}
 	mTextureUploadBuffer->Unmap(0, nullptr);
 
-	// 리소스 배리어(Resource Barrier): 셰이더 읽기 상태를 복사 목적지(Copy Destination) 상태로 전환
+	// 셰이더 읽기 → 복사 목적지 상태 전환
 	CD3DX12_RESOURCE_BARRIER barrierToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
 		mDynamicCameraTexture.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COPY_DEST);
 	cmdList->ResourceBarrier(1, &barrierToCopy);
 
-	// 복사 명령 기록 (Upload Buffer -> Default GPU Texture Memory)
+	// 업로드 버퍼 → 디폴트 힙 텍스처 복사
 	CD3DX12_TEXTURE_COPY_LOCATION dst(mDynamicCameraTexture.Get(), 0);
 	CD3DX12_TEXTURE_COPY_LOCATION src(mTextureUploadBuffer.Get(), 0);
 
@@ -1226,7 +1265,7 @@ void DocentApp::UploadCameraTextureRuntime(unsigned char* pixelData, int width, 
 
 	cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
 
-	// 복사 완료 후 다시 셰이더가 렌더링 시 읽을 수 있도록 읽기 상태로 전환
+	// 복사 완료 → 셰이더 읽기 상태 복귀
 	CD3DX12_RESOURCE_BARRIER barrierToShader = CD3DX12_RESOURCE_BARRIER::Transition(
 		mDynamicCameraTexture.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
@@ -1439,16 +1478,6 @@ void DocentApp::HandlePacket(uint32_t type, std::vector<unsigned char>& payload)
 {
 	switch (static_cast<EDocentPacket>(type))
 	{
-	case EDocentPacket::Gyro:
-	{
-		if (payload.size() != sizeof(float) * 4) return;
-		float q[4];
-		memcpy(q, payload.data(), sizeof(q));
-
-		std::lock_guard<std::mutex> lock(mDataMutex);
-		mSharedQx = q[0]; mSharedQy = q[1]; mSharedQz = q[2]; mSharedQw = q[3];
-		break;
-	}
 	case EDocentPacket::Image:
 	{
 		std::vector<unsigned char> pixels;

@@ -109,7 +109,7 @@ struct DocentHeader
 };
 #pragma pack(pop)
 
-enum class EDocentPacket : uint32_t { Gyro = 1, Image = 2, Docent = 3 };
+enum class EDocentPacket : uint32_t { Image = 2, Docent = 3 };
 
 class DocentApp
 {
@@ -213,9 +213,6 @@ private:
 	int mSwapSrcIndex = 1; // 스왑할 첫 번째 액자 번호 (1~10)
 	int mSwapDstIndex = 2; // 스왑할 두 번째 액자 번호 (1~10)
 
-	// 모바일 AR 트래킹 센서 활성화 여부를 제어하는 플래그 변수
-	bool mIsMobileSensorActive = false;
-
 	// 실시간 이미지 버퍼를 받아 GPU 텍스처 메모리를 갱신하는 동적 업로드 함수
 	void UploadCameraTextureRuntime(unsigned char* pixelData, int width, int height);
 
@@ -235,11 +232,7 @@ private:
 
 	// 스마트폰에서 수신받아 공유할 최신 데이터 버퍼
 	std::vector<unsigned char> mSharedImageBuffer;
-	float mSharedQx = 0.0f, mSharedQy = 0.0f, mSharedQz = 0.0f, mSharedQw = 1.0f;
 	bool mIsNewImageAvailable = false;
-
-	// 수신된 자이로 회전값을 DirectX SIMD 쿼터니언 벡터로 변환 반환
-	DirectX::XMVECTOR GetMobileSensorQuaternion();
 
 	// WIC 활용 메모리 바이너리 RGBA 픽셀 디코딩
 	bool DecodeImageFromMemory(const std::vector<unsigned char>& imageBuffer, std::vector<unsigned char>& outPixels, int targetWidth, int targetHeight, float& outRotation);
