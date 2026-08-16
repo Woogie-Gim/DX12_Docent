@@ -21,3 +21,6 @@ x86/
 *.log
 *.tlog
 *.lastbuildstate
+
+# GIF
+.vs/Images/*.gif
